@@ -12,4 +12,5 @@ You can reach me at jhjeong314 (at) gmail.com and/or treenote (at) snu.ac.kr.
 
 ---
 
-1. [LaTeX in Jupyter Notebook](./latex_in_jupyternotebook.ipynb).
+1. LaTeX in Jupyter Notebook [GitHub](./latex_in_jupyternotebook.ipynb) | [Google Colab](https://colab.research.google.com/drive/1JRn8m4_t77R-gJqjFSXiKaikWcDMQAnS?usp=sharing)
+1. MathJax in Jupyter Notebook [GitHub](./mathjax_in_jupyternotebook.ipynb) | [Google Colab](https://colab.research.google.com/drive/1rywvvBl6WIMHzCdW-HeH69kbf9XYjxCW?usp=sharing)
