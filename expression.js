@@ -1,4 +1,8 @@
-/* from github.com/cosinekitty/parser/blob/master/expression.js */
+/* 
+from 
+  https://github.com/cosinekitty/parser
+  https://levelup.gitconnected.com/create-your-own-expression-parser-d1f622077796
+*/
 
 'use strict';
 
@@ -30,7 +34,8 @@ window.onload = function() {
         }
     }
 
-    class Expression {
+    class Expression { // Expression is a node in the syntax tree
+        // element of arglist is an Expression
         constructor(precedence, optoken, arglist) {
             this.precedence = precedence;
             this.optoken = optoken;
