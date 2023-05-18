@@ -1,14 +1,15 @@
 # Proofmood
 
-Proofmood is a computer logic system for Fitch calculus (propositional and 1st-order).
 
-Currently it is hosted at [https://proofmood.mindconnect.cc](https://proofmood.mindconnect.cc).  This website is based on LAMP. The logic engine is written in JavaScript.
+Proofmood is a computer logic system designed for Fitch calculus, encompassing propositional and first-order logic.
 
-This project started in 2009.  In May 2023, I decided to move to Django and rewrite the logic engine in Python.
+Presently, Proofmood is accessible at https://proofmood.mindconnect.cc, and the website operates on the LAMP (Linux, Apache, MySQL, PHP) stack. The logic engine behind Proofmood is implemented using JavaScript.
 
-You'll need a nodding knowledge in Python and Jupyter Notebook as well as mathematical logic to read this repo.
+The inception of this project dates back to 2009. As of May 2023, I have made the decision to migrate to Django and completely rewrite the logic engine using Python.
 
-You can reach me at jhjeong314 (at) gmail.com and/or treenote (at) snu.ac.kr.
+To comprehend the contents of this repository, it would be beneficial to have a fundamental understanding of Python, Jupyter Notebook, and mathematical logic.
+
+You can contact me at jhjeong314@gmail.com and/or treenote@snu.ac.kr.
 
 ---
 
