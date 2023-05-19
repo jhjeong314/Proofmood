@@ -17,3 +17,4 @@ You can contact me at jhjeong314@gmail.com and/or treenote@snu.ac.kr.
 1. MathJax in Jupyter Notebook [GitHub](./mathjax_in_jupyternotebook.ipynb) | [Google Colab](https://colab.research.google.com/drive/1rywvvBl6WIMHzCdW-HeH69kbf9XYjxCW?usp=sharing)
 1. Parser for a simple arithmetic grammar [GitHub](./arith4parser.ipynb) | [Google Colab](https://colab.research.google.com/drive/1vpzjogSZi-QOx0QnBOxgPPFZkEJVKU1b?usp=sharing)
 1. Parser for arithmetic with unary minus and postfix operators. [GitHub](./arith5parser.ipynb) | [Google Colab](https://colab.research.google.com/drive/18niproAYizRP6BzWXYsCK6wGc0GJse1U?usp=sharing)
+1. Parser for arithmetic with function symbols. [GitHub](./arith6parser.ipynb) | [Google Colab](https://colab.research.google.com/drive/1eAV9i2jEN39hfL7RbOsKnIW7qi-YveJa?usp=sharing)
