@@ -30,6 +30,6 @@ Before we start working on logical formulas, we prepare some tools for parsing a
 
 ## 2. Logical formulas
 
-Will start soon!
+1. Parser for Propositional Formulas [GitHub](./logic_parser.ipynb) | [Goole Colab](https://colab.research.google.com/drive/1ZlanSUrOCbLW0mJgMsUDdV8bF4B0Ab66?usp=sharing)
 
 ## 3. Fitch proofs
