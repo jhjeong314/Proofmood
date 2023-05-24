@@ -170,8 +170,21 @@ class Node:
               kid2_str = f"({kid2_str})"
             else:
               pass # even 'imp' is right-associative
-        else:
-          pass # no need to add parentheses because of precedence
+        else: # 'and', 'or' (precedence == 2)
+          if(kid1.token.precedence > self.token.precedence):
+            pass
+          # determine whether we need parenthses around kid1
+          elif kid1.token.precedence < self.token.precedence:
+            kid1_str = f"({kid1_str})"
+          elif self.token.value != kid1.token.value:
+              kid1_str = f"({kid1_str})"
+          # determine whether we need parenthses around kid2
+          if kid2.token.precedence > self.token.precedence:
+            pass
+          elif kid2.token.precedence < self.token.precedence:
+            kid2_str = f"({kid2_str})"
+          elif self.token.value != kid2.token.value:
+              kid2_str = f"({kid2_str})"
         ret_str += kid1_str + token_str + kid2_str
       else: # arity is 1
         token_str = LATEX_DICT[self.token.value] + ' ' 
