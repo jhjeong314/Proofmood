@@ -72,9 +72,7 @@ def testTokenizer(input_text):
       print(t)
 
 def build_GNode(ast, xpos, ypos, ax, r):
-  LATEX_DICT = dict([("not", r"\neg"), ("and", r"\wedge"), ("or", r"\vee"),
-                     ("imp", r"\rightarrow"), ("iff", r"\leftrightarrow"),
-                     ("xor", r"\nleftrightarrow"), ("bot", r"\bot")])
+  LATEX_DICT = Node.LATEX_DICT
   
   # post-order traversal (unlike the other 3 methods)
   if(ast.children):
@@ -84,7 +82,7 @@ def build_GNode(ast, xpos, ypos, ax, r):
   label = ast.token.value
 
   if ast.token.token_type == 'prop_letter':
-    pass
+    label = identifier_to_latex(label)
   else:
     label = LATEX_DICT[label]
   
@@ -113,7 +111,31 @@ def draw_ast(ast, verbose=False):
 
   tree.draw_tree(plt)
 
+def identifier_to_latex(instr):
+  pos_underscore = instr.rfind('_')
+  if pos_underscore >= 0:
+    str1 = instr[:pos_underscore]
+    str2 = instr[pos_underscore+1:]
+    if len(str1) > 1:
+      str1 = r"{\rm " + str1.replace("_", r"\_") + r"}"
+    if str2:
+      ret_val = str1 + r"_{" + str2 + r"}"
+    else:
+      ret_val = str1
+  else:
+    str1 = instr
+    if len(str1) > 1:
+      ret_val = r"{\rm " + str1 + r"}"
+    else:
+      ret_val = str1
+
+  return ret_val
+
 class Node:
+  LATEX_DICT = dict([("not", r"\neg"), ("and", r"\wedge"), ("or", r"\vee"),
+                     ("imp", r"\rightarrow"), ("iff", r"\leftrightarrow"),
+                     ("xor", r"\nleftrightarrow"), ("bot", r"\bot")])
+
   def __init__(self, token, children=None):
     self.token = token # the node is labeled with a Token object
     self.children = children if children else [] # list of Node objects
@@ -138,14 +160,16 @@ class Node:
     return ret_str
   
   def build_infix_latex(self):
-    LATEX_DICT = dict([("not", r"\neg"), ("and", r"\wedge"), ("or", r"\vee"),
-                       ("imp", r"\rightarrow"), ("iff", r"\leftrightarrow"),
-                       ("xor", r"\nleftrightarrow"), ("bot", r"\bot")])
+    LATEX_DICT = self.LATEX_DICT
 
     if not self.children: 
       if self.token.token_type == 'prop_letter':
-        return self.token.value
-      else: # self.token.value could bd 'bot'
+        # All but the last occurrence of an underscore in an identifier are escaped with a backslash.
+        # Identifier string is romanized except the end substrings after the
+        # last underscore, which are subscripted with _{}.
+
+        return identifier_to_latex(self.token.value)
+      else: # self.token.value could be 'bot'
         return LATEX_DICT[self.token.value]
     else: # self.token is a connective
       ret_str = ''
@@ -155,7 +179,7 @@ class Node:
         kid1_str = kid1.build_infix_latex()
         kid2_str = kid2.build_infix_latex()
         if self.token.precedence == 1: 
-          # determine whether we need parenthses around kid1
+          # determine whether we need parentheses around kid1
           if kid1.token.precedence == 1:
             if self.token.value != kid1.token.value:
               kid1_str = f"({kid1_str})"
@@ -164,7 +188,7 @@ class Node:
                 kid1_str = f"({kid1_str})"
               else:
                 pass # iff and xor are associative
-          # determine whether we need parenthses around kid2
+          # determine whether we need parentheses around kid2
           if kid2.token.precedence == 1:
             if self.token.value != kid2.token.value:
               kid2_str = f"({kid2_str})"
@@ -173,12 +197,12 @@ class Node:
         else: # 'and', 'or' (precedence == 2)
           if(kid1.token.precedence > self.token.precedence):
             pass
-          # determine whether we need parenthses around kid1
+          # determine whether we need parentheses around kid1
           elif kid1.token.precedence < self.token.precedence:
             kid1_str = f"({kid1_str})"
           elif self.token.value != kid1.token.value:
               kid1_str = f"({kid1_str})"
-          # determine whether we need parenthses around kid2
+          # determine whether we need parentheses around kid2
           if kid2.token.precedence > self.token.precedence:
             pass
           elif kid2.token.precedence < self.token.precedence:
@@ -190,7 +214,7 @@ class Node:
         token_str = LATEX_DICT[self.token.value] + ' ' 
         kid1 = self.children[0]
         kid1_str = kid1.build_infix_latex()
-        # determine whether we need parenthses around kid1
+        # determine whether we need parentheses around kid1
         if kid1.token.precedence < self.token.precedence:
           kid1_str = f"({kid1_str})"
         else:
@@ -198,7 +222,36 @@ class Node:
         ret_str += token_str + kid1_str
 
       return ret_str  
+    
+  def build_bussproof_rec(self):
+    LATEX_DICT = self.LATEX_DICT
 
+    if not self.children: 
+      if self.token.token_type == 'prop_letter':
+        label = identifier_to_latex(self.token.value)
+      else: # self.token.value could be 'bot'
+        label = LATEX_DICT[self.token.value]
+
+      the_str = r"\AxiomC" + r"{$" + label + "$}\n"
+    else: # self.token is a connective
+      token_str = LATEX_DICT[self.token.value]
+      if self.token.arity == 2:
+        kid1, kid2 = self.children
+        kid1_str = kid1.build_bussproof_rec()
+        kid2_str = kid2.build_bussproof_rec()
+        the_str = kid1_str + kid2_str + r"\BinaryInfC" + r"{$" + token_str + "$}\n"
+      else: # arity is 1
+        kid1 = self.children[0]
+        kid1_str = kid1.build_bussproof_rec()
+        the_str = kid1_str + r"\UnaryInfC" + r"{$" + token_str + "$}\n"
+
+    return the_str
+
+  def build_bussproof(self):
+    the_str = self.build_bussproof_rec()
+
+    return r"\begin{prooftree}" + "\n" + the_str + r"\end{prooftree}"
+  
   def draw_tree(self, verbose=False):
     draw_ast(self, verbose)
 
@@ -338,7 +391,7 @@ class GNode: # graph node
     # dx is the horizontal distances between the children
     # dy is the vertical distance between the root and the children    
     # children is a list of Node objects    
-    # Roote's position is (0, 0). When rendering, we will shift the
+    # Root's position is (0, 0). When rendering, we will shift the
     # node's center to the center of the figure.
     # The root and each child's position is relative to the center of the node.
     

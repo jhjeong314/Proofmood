@@ -144,6 +144,26 @@ def draw_ast(ast, verbose=False):
 
   tree.draw_tree(plt)
 
+def identifier_to_latex(instr):
+  pos_underscore = instr.rfind('_')
+  if pos_underscore >= 0:
+    str1 = instr[:pos_underscore]
+    str2 = instr[pos_underscore+1:]
+    if len(str1) > 1:
+      str1 = r"{\rm " + str1.replace("_", r"\_") + r"}"
+    if str2:
+      ret_val = str1 + r"_{" + str2 + r"}"
+    else:
+      ret_val = str1
+  else:
+    str1 = instr
+    if len(str1) > 1:
+      ret_val = r"{\rm " + str1 + r"}"
+    else:
+      ret_val = str1
+
+  return ret_val
+
 class Node:
   def __init__(self, token, children=None):
     self.token = token # the node is labeled with a Token object
@@ -180,7 +200,11 @@ class Node:
     # In *(+(a, b), *(c, d)) => (a + b) * (c * d), we need the parentheses around
     # a + b, but not around c * d. This is because * has higher precedence than +.
     if not self.children: # leaf node, i.e. a numeral or an identifier
-      return self.token.value
+      # All but the last occurrence of an underscore in an identifier are escaped with a backslash.
+      # Identifier string is romanized except the end substrings after the
+      # last underscore, which are subscripted with _{}.
+
+      return identifier_to_latex(self.token.value)
     else:
       # self.token.token_type == func_symbol | op_unary_prefix | op_bin_1 | 
       #                          op_bin_2 | op_bin_exp | op_postfix
@@ -229,7 +253,7 @@ class Node:
           if kid2.token.precedence < self.token.precedence:
             pass # In a^(b+c), we don't need parentheses around b+c when it's latexed.
           ret_str += kid1_str + ' ' + self.token.value + ' ' + '{' + kid2_str + '}'
-        else: # precedenc==4. must be of type op_postfix
+        else: # precedence==4. must be of type op_postfix
           kid1 = self.children[0]
           kid1_str = kid1.build_infix_latex()
           if kid1.token.precedence < self.token.precedence:
@@ -447,7 +471,7 @@ class GNode: # graph node
     # dx is the horizontal distances between the children
     # dy is the vertical distance between the root and the children    
     # children is a list of Node objects    
-    # Roote's position is (0, 0). When rendering, we will shift the
+    # Root's position is (0, 0). When rendering, we will shift the
     # node's center to the center of the figure.
     # The root and each child's position is relative to the center of the node.
     
