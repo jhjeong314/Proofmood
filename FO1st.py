@@ -3,12 +3,106 @@
 
 ## (1/3) Tokenization ## ---------------------------------------------------------
 
+#### Constants
+
+# emptyset, infty
+
+#### Function symbols
+
+# binary infix function symbols:
+#   precedence 1: +, -
+#   precedence 2: *, /, %
+#   precedence 3: ^
+# unary prefix function symbols:
+#   precedence 1: -
+# unary postfix function symbols:
+#   precedence 4: !, ', #, +, -, *, 0, -, inv
+# all other functions are n-ary prefix function symbols with n >= 1
+
+# Certain symbols can be found in multiple categories. In such instances,
+# the symbol's type and arity are initially assigned during tokenization 
+# and later confirmed during parsing.
+
+# The appearance of a symbol can vary depending on its type. For example, 
+# the symbol "*" is typically displayed as an infix operator. However, 
+# when used as a postfix operator, it is rendered as a superscript.
+
+#### Predicate symbols
+
+# binary infix predicate symbols: (precedences are all the same)
+#   !=, <, <=, >, >=
+#   in, nin, subseteq, nsubseteq, subsetneqq, 
+#   supseteq, nsupseteq, supsetneqq, divides, ndivides,
+#   sim, simeq, cong, equiv, approx
+# all other predicates are n-ary prefix predicate symbols with n >= 0
+
+#### Rendering
+
+# We will use LaTeX for rendering. Once a formula is parsed, it is natural 
+# to render it in polish notation or RPN(reverse polish notation).  But for
+# human readers, infix notation is more natural.  So we need to convert
+# the parsed tree back into infix notation---but this time we use LaTeXed
+# token values.  Or we draw a tree diagram for the parsed tree, in which 
+# the nodes are labeled with the LaTeXed token values.
+
+#### Precedence
+
+# Precedences are used to determine the order of parsing and/or evaluation.
+# The higher the precedence, the earlier the parsing and/or evaluation.
+# The precedence of a token have meaning only among tokens of the same type
+# as follows: Parenthesis > Function > Predicate > Quantifiers > Connectives
+
+#### Associativity
+
+# Syntactic associativity is used to determine the order of parsing.
+# Left associativity means a op b op c = (a op b) op c.
+# Right associativity means a op b op c = a op (b op c).
+# Most operators are left associative.
+# Right associativity is used for exponentiation(function) and 
+# implication(connective).  Unary prefix operators are right associative too
+# but this is trivial because they are always followed by a term.
+# Semantic associativity is not relevant in parsing.
+# But it is relevant in rendering. For instance, you don't need parentheses
+# in A and B and C when rendering, although it is parsed as (A and B) and C 
+# by the default left associativity.
+# On the other hand, A and B or C is a legal expression but should be 
+# rendered as (A and B) or C because it is parsed this way by the default
+# left associativity.
+
 import re
 
 class Token:
-  def __init__(self, value):
-    SYMB_DICT = dict([("<", ("pred", "infix", "2")), ])
+  CONSTS = [ "emptyset", "infty" ]
+  FCTN_PRE = [ "-" ]
+  FCTN_POST = [ "!", "'", "#", "+", "-", "*", "0", "inv" ]
+  FCTN_IN_1 = [ "+", "-" ]
+  FCTN_IN_2 = [ "*", "/", "%" ]
+  FCTN_IN_3 = [ "^" ]
+  PRED_IN = [ "!=", "<", "<=", ">", ">=", "in", "nin", "subseteq",
+              "nsubseteq", "subsetneqq", "supseteq", "nsupseteq",
+              "supsetneqq", "divides", "ndivides", "sim", "simeq",
+              "cong", "equiv", "approx" ]
+  RESERVED_WORDS = set(CONSTS + FCTN_PRE + FCTN_POST + FCTN_IN_1 + 
+                      FCTN_IN_2 + FCTN_IN_3 + PRED_IN)
+  SPECIAL_CHARS = set(
+    FCTN_PRE + FCTN_POST + FCTN_IN_1 + FCTN_IN_2 + FCTN_IN_3 + 
+    list("<>=()[]{},")
+  )
+
+  @staticmethod
+  def isnumeral(s: str) -> bool:
+    # str is assumed to be isascii().
+    return s.isdecimal() and (len(s) == 1 or s[0]!='0')
     
+  def __init__(self, value):
+    CONSTS = self.CONSTS
+    FCTN_PRE = self.FCTN_PRE
+    FCTN_POST = self.FCTN_POST
+    FCTN_IN_1 = self.FCTN_IN_1
+    FCTN_IN_2 = self.FCTN_IN_2
+    FCTN_IN_3 = self.FCTN_IN_3
+    PRED_IN = self.PRED_IN
+
     self.value = value # a string
     self.token_type = None
     self.arity = None
@@ -31,7 +125,7 @@ class Token:
     elif value == 'bot':
       self.token_type = 'conn_0ary'
       self.arity = 0
-      self.precedence = 5
+      self.precedence = 9
     elif value in ("forall", "exists"):
       self.token_type = 'quantifier'
       self.arity = 1
@@ -42,7 +136,35 @@ class Token:
       self.token_type = 'rparen'
     elif value == ",":
       self.token_type = 'comma'
-    # user-defined identifiers (variable, constant, function, predicate)
+    # reserved words (constants)
+    elif value in CONSTS:
+      self.token_type = 'const'
+      self.precedence = 9
+    # reserved words (function symbols)
+    elif value in FCTN_IN_1:
+      self.token_type = 'fctn_in_1'
+      self.arity = 2
+      self.precedence = 1
+    elif value in FCTN_IN_2:
+      self.token_type = 'fctn_in_2'
+      self.arity = 2
+      self.precedence = 2
+    elif value in FCTN_IN_3:
+      self.token_type = 'fctn_in_3'
+      self.arity = 2
+      self.precedence = 3
+    elif value in FCTN_PRE:
+      self.token_type = 'fctn_pre'
+      self.arity = 1
+      self.precedence = 1
+    elif value in FCTN_POST:
+      self.token_type = 'fctn_post'
+      self.arity = 1
+      self.precedence = 4
+    # reserved words (predicate symbols)
+    elif value in PRED_IN:
+      self.token_type = 'pred_in'
+      self.arity = 2
     else:
       raise ValueError(f"'{value}' is invalid (Token)")
   def __str__(self):
@@ -50,20 +172,29 @@ class Token:
 
 
 def tokenizer(input_text):
-  connectives = ("imp", "iff", "xor", "and", "or", "not", "bot")
+  import re
   tokens = []
-  # Split the input text into a list of tokens at word boundaries and whitespaces
-  # then remove empty strings and strip off leading and trailing whitespaces.
+  # split the input text into a list of tokens at word boundaries and whitespaces
+  # then remove empty strings and strip off leading and trailing whitespaces
   li = [s.strip() for s in re.split(r"\b|\s", input_text, re.ASCII) 
                   if s.strip()]
-  for s in li: # s is a nonempty string
+  for s in li: # s is a string
     if not s.isascii():
       raise ValueError(f"'{s}' is invalid (non-ASCII)")
-    if not (s in connectives or
-            re.match(r'^[A-Z][A-Za-z0-9_]*$', s) or  # propositional letter
-            s in ("(", ")")):   
+    if not (set(s).issubset(Token.SPECIAL_CHARS) or 
+            Token.isnumeral(s) or 
+            (s.replace('_','').isalnum() and s[0].isalpha())):   
       raise ValueError(f"'{s}' is invalid (non-token)")
-    tokens.append(Token(s))
+    if set(s).issubset(Token.SPECIAL_CHARS) and len(s) > 1:
+      # split string of consecutive special chars into individual characters
+      for c in s: # c is a special char
+        beware_of_prev = tokens and tokens[-1].value in "!<>"
+        if c == "=" and beware_of_prev:
+          tokens[-1].value += c
+        else:
+          tokens.append(Token(c))
+    else:
+      tokens.append(Token(s))
   
   return tokens
 
@@ -75,6 +206,10 @@ def testTokenizer(input_text):
   else:
     for t in tokens:
       print(t)
+
+def print_in_chunk(li, chunk_size=5):
+  for i, s in enumerate(li):
+    print(s, end=" " if i % chunk_size != chunk_size-1 else "\n")
 
 ## (2/3) Parsing ## ---------------------------------------------------------
 

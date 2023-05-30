@@ -78,7 +78,7 @@ class Token:
 
 def tokenizer(input_text):
   tokens = []
-  # split the input text into a list of tokens at word boundries and whitespaces
+  # split the input text into a list of tokens at word boundaries and whitespaces
   # then remove empty strings and strip off leading and trailing whitespaces
   li = [s.strip() for s in re.split(r"\b|\s", input_text, re.ASCII) 
                   if s.strip()]

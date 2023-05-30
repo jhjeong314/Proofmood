@@ -1,9 +1,24 @@
 {
   "cSpell.words": [
+    "CONSTS",
+    "emptyset",
+    "FCTN",
     "forall",
+    "httpimport",
+    "infty",
+    "isnumeral",
+    "ndivides",
+    "nsubseteq",
+    "nsupseteq",
     "nterm",
     "Oper",
     "operatorname",
-    "symb"
+    "simeq",
+    "subseteq",
+    "subsetneqq",
+    "supseteq",
+    "supsetneqq",
+    "symb",
+    "Tbox"
   ]
 }
