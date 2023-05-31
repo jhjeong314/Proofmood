@@ -1,8 +1,8 @@
 # This file is imported by FO_parser1st.ipynb.
 
-
 ## (1/3) Tokenization ## ---------------------------------------------------------
 
+#region Tokenization comments
 #### Constants
 
 # emptyset, infty
@@ -16,7 +16,7 @@
 # unary prefix function symbols:
 #   precedence 1: -
 # unary postfix function symbols:
-#   precedence 4: !, ', #, +, -, *, 0, -, inv
+#   precedence 4: !, ', ^#, ^+, ^-, ^*, ^o, ^inv
 # all other functions are n-ary prefix function symbols with n >= 1
 
 # Certain symbols can be found in multiple categories. In such instances,
@@ -42,7 +42,7 @@
 # to render it in polish notation or RPN(reverse polish notation).  But for
 # human readers, infix notation is more natural.  So we need to convert
 # the parsed tree back into infix notation---but this time we use LaTeXed
-# token values.  Or we draw a tree diagram for the parsed tree, in which 
+# token values.  Or we draw a tree diagram for the parsed tree(AST), in which 
 # the nodes are labeled with the LaTeXed token values.
 
 #### Precedence
@@ -69,14 +69,16 @@
 # rendered as (A and B) or C because it is parsed this way by the default
 # left associativity.
 
+#endregion
+
 import re
 
 class Token:
   CONSTS = [ "emptyset", "infty" ]
   FCTN_PRE = [ "-" ]
-  FCTN_POST = [ "!", "'", "#", "+", "-", "*", "0", "inv" ]
-  FCTN_IN_1 = [ "+", "-" ]
-  FCTN_IN_2 = [ "*", "/", "%" ]
+  FCTN_POST = [ "!", "'", "^#", "^+", "^-", "^*", "^o", "^inv" ]
+  FCTN_IN_1 = [ "+", "-", "cap", "cup", "oplus" ]
+  FCTN_IN_2 = [ "*", "/", "%", "times", "div", "otimes", "cdot" ]
   FCTN_IN_3 = [ "^" ]
   PRED_IN = [ "!=", "<", "<=", ">", ">=", "in", "nin", "subseteq",
               "nsubseteq", "subsetneqq", "supseteq", "nsupseteq",
@@ -84,16 +86,9 @@ class Token:
               "cong", "equiv", "approx" ]
   RESERVED_WORDS = set(CONSTS + FCTN_PRE + FCTN_POST + FCTN_IN_1 + 
                       FCTN_IN_2 + FCTN_IN_3 + PRED_IN)
-  SPECIAL_CHARS = set(
-    FCTN_PRE + FCTN_POST + FCTN_IN_1 + FCTN_IN_2 + FCTN_IN_3 + 
-    list("<>=()[]{},")
-  )
+  
+  SPECIAL_CHARS = "-!'^#+*/%=<>()[]{},"
 
-  @staticmethod
-  def isnumeral(s: str) -> bool:
-    # str is assumed to be isascii().
-    return s.isdecimal() and (len(s) == 1 or s[0]!='0')
-    
   def __init__(self, value):
     CONSTS = self.CONSTS
     FCTN_PRE = self.FCTN_PRE
@@ -166,10 +161,83 @@ class Token:
       self.token_type = 'pred_in'
       self.arity = 2
     else:
-      raise ValueError(f"'{value}' is invalid (Token)")
-  def __str__(self):
-    return f"{self.value}({self.token_type})"
+      # numeral, variable, constant, fctn_pre, pred_pre       
+      len_s = len(value)
+      if self.isnumeral(value):
+        self.token_type = 'numeral'
+      elif value[0] in "uvw" + "xyz" + "ijk" + "lmn":
+        if len_s==1 or Token.isword(value[1:], "decimal"):
+          self.token_type = 'var'
+        else:
+          raise ValueError(f"'{value}' is invalid variable symbol (Token)")
+      elif value[0] in "abcde" :
+        if len_s==1 or Token.isword(value[1:]):
+          self.token_type = 'const'
+        else:
+          raise ValueError(f"'{value}' is invalid constant symbol (Token)")        
+      elif value[0] in "fgh":
+        if len_s==1 or Token.isword(value[1:]):
+          self.token_type = 'fctn_pre'
+          self.arity = self.get_arity(value)
+        else:
+          raise ValueError(f"'{value}' is invalid function symbol (Token)")
+      elif Token.isword(value, "upper"):
+        if len_s==1 or Token.isword(value[1:]):
+          self.token_type = 'pred_pre' 
+          self.arity = self.get_arity(value)
+        else:
+          raise ValueError(f"'{value}' is invalid predicate symbol (Token)")
+      else:
+        raise ValueError(f"'{value}' is invalid (Token)")
+  
+  @staticmethod
+  def isnumeral(s: str) -> bool:
+    # str is assumed to be isascii().
+    return s.isdecimal() and (len(s) == 1 or s[0]!='0')
+  
+  @staticmethod
+  def isword(s: str, opt: str="all") -> bool:
+    if(not s.replace('_','').isalnum()):
+      return False
+    if(opt=="alpha"):
+      return s[0].isalpha()
+    elif(opt=="lower"):
+      return s[0].islower()
+    elif(opt=="upper"):
+      return s[0].isupper()
+    elif(opt=="decimal"):
+      return s.isdecimal()
+    elif(opt=="numeral"):
+      return Token.isnumeral(s)
+    else: # opt=="all"
+      return True
+    
+  @staticmethod
+  def get_arity(value: str) -> int:
+    if not (d := value[-1]).isdecimal():
+      if value[0] in "fgh":
+        return 1
+      elif value[0].isupper():
+        return 0
+    else:
+      if value[0] in "fgh" and d=="0":
+        raise ValueError(
+          f"'{value}' is invalid, 0-ary function not allowed (Token)"
+        )
+      else:
+        return int(d)
 
+  def __str__(self):
+    if self.arity is not None:
+      s_arity = f", arity={self.arity}"
+    else:
+      s_arity = ""
+    if self.precedence is not None:
+      s_precedence = f", precedence={self.precedence}"
+    else:
+      s_precedence = ""
+
+    return f"{self.value} ({self.token_type}{s_arity}{s_precedence})"
 
 def tokenizer(input_text):
   import re
@@ -182,19 +250,33 @@ def tokenizer(input_text):
     if not s.isascii():
       raise ValueError(f"'{s}' is invalid (non-ASCII)")
     if not (set(s).issubset(Token.SPECIAL_CHARS) or 
-            Token.isnumeral(s) or 
-            (s.replace('_','').isalnum() and s[0].isalpha())):   
+            Token.isnumeral(s) or Token.isword(s)):   
       raise ValueError(f"'{s}' is invalid (non-token)")
+    
     if set(s).issubset(Token.SPECIAL_CHARS) and len(s) > 1:
-      # split string of consecutive special chars into individual characters
+      # split string of consecutive special chars into 
+      # individual characters or !=, <=, >=, ^*, ^+, ^-, ^#
       for c in s: # c is a special char
-        beware_of_prev = tokens and tokens[-1].value in "!<>"
-        if c == "=" and beware_of_prev:
-          tokens[-1].value += c
+        if c == "=" and tokens and tokens[-1].value in "!<>":
+          token1 = tokens.pop()
+          token1.value += c
+          tokens.append(Token(token1.value))
+        elif c in ("*", "+", "-", "#") and tokens[-1].value=="^":
+          token1 = tokens.pop()
+          token1.value += c
+          tokens.append(Token(token1.value))
         else:
           tokens.append(Token(c))
-    else:
-      tokens.append(Token(s))
+    elif s in ("o", "inv"): 
+      # '^o' and '^inv' are postfix unary function symbols
+      if tokens and tokens[-1].value=="^":
+        token1 = tokens.pop()
+        token1.value += s
+        tokens.append(Token(token1.value))
+      else:
+        tokens.append(Token(s))
+    else: 
+        tokens.append(Token(s))
   
   return tokens
 
@@ -207,71 +289,11 @@ def testTokenizer(input_text):
     for t in tokens:
       print(t)
 
-def print_in_chunk(li, chunk_size=5):
+def print_in_chunk(li, chunk_size=5): # li is any iterable
   for i, s in enumerate(li):
     print(s, end=" " if i % chunk_size != chunk_size-1 else "\n")
 
 ## (2/3) Parsing ## ---------------------------------------------------------
-
-def build_GNode(ast, xpos, ypos, ax, r):
-  LATEX_DICT = Node.LATEX_DICT
-  
-  # post-order traversal (unlike the other 3 methods)
-  if(ast.children):
-    children = [build_GNode(kid, xpos, ypos, ax, r) for kid in ast.children]
-  else:
-    children = []
-  label = ast.token.value
-
-  if ast.token.token_type == 'prop_letter':
-    label = identifier_to_latex(label)
-  else:
-    label = LATEX_DICT[label]
-  
-  txt = ax.text(xpos, ypos, '$' + label + '$', 
-                ha='center', va='center', fontsize=6, alpha=0)
-  return GNode(txt, ax, r, children=children)
-
-def draw_ast(ast, verbose=False):
-  import matplotlib.pyplot as plt
-
-  plt.rcParams["mathtext.fontset"] = "cm" # cm = computer modern by Donald Knuth
-  plt.rcParams["figure.dpi"] = 300 # default 100
-  fig, ax = plt.subplots(1, 1, figsize=(1.5, 1))
-  ax.set(aspect='equal')
-  ax.set_xlim(0, 3) 
-  ax.set_ylim(0, 2) 
-  ax.axis('off')
-  center_x = ax.get_xlim()[1] / 2
-  center_y = ax.get_ylim()[1] / 2
-  r = fig.canvas.get_renderer()
-
-  tree = build_GNode(ast, center_x, center_y, ax, r)
-
-  if verbose:
-    print(tree)
-
-  tree.draw_tree(plt)
-
-def identifier_to_latex(instr):
-  pos_underscore = instr.rfind('_')
-  if pos_underscore >= 0:
-    str1 = instr[:pos_underscore]
-    str2 = instr[pos_underscore+1:]
-    if len(str1) > 1:
-      str1 = r"{\rm " + str1.replace("_", r"\_") + r"}"
-    if str2:
-      ret_val = str1 + r"_{" + str2 + r"}"
-    else:
-      ret_val = str1
-  else:
-    str1 = instr
-    if len(str1) > 1:
-      ret_val = r"{\rm " + str1 + r"}"
-    else:
-      ret_val = str1
-
-  return ret_val
 
 class Node:
   LATEX_DICT = dict([("not", r"\neg"), ("and", r"\wedge"), ("or", r"\vee"),
@@ -505,8 +527,70 @@ def parse_text(input_text):
                       f" in parse_text(). Expected end of input.")
   return ast
 
-## (3/3) Draw bussproof style Trees ## ------------------------------------
+#region (3/3) Utils for rendering AST ## ------------------------------------
 
+def build_GNode(ast, xpos, ypos, ax, r):
+  LATEX_DICT = Node.LATEX_DICT
+  
+  # post-order traversal (unlike the other 3 methods)
+  if(ast.children):
+    children = [build_GNode(kid, xpos, ypos, ax, r) for kid in ast.children]
+  else:
+    children = []
+  label = ast.token.value
+
+  if ast.token.token_type == 'prop_letter':
+    label = identifier_to_latex(label)
+  else:
+    label = LATEX_DICT[label]
+  
+  txt = ax.text(xpos, ypos, '$' + label + '$', 
+                ha='center', va='center', fontsize=6, alpha=0)
+  return GNode(txt, ax, r, children=children)
+
+def draw_ast(ast, verbose=False):
+  import matplotlib.pyplot as plt
+
+  plt.rcParams["mathtext.fontset"] = "cm" # cm = computer modern by Donald Knuth
+  plt.rcParams["figure.dpi"] = 300 # default 100
+  fig, ax = plt.subplots(1, 1, figsize=(1.5, 1))
+  ax.set(aspect='equal')
+  ax.set_xlim(0, 3) 
+  ax.set_ylim(0, 2) 
+  ax.axis('off')
+  center_x = ax.get_xlim()[1] / 2
+  center_y = ax.get_ylim()[1] / 2
+  r = fig.canvas.get_renderer()
+
+  tree = build_GNode(ast, center_x, center_y, ax, r)
+
+  if verbose:
+    print(tree)
+
+  tree.draw_tree(plt)
+
+def identifier_to_latex(instr):
+  pos_underscore = instr.rfind('_')
+  if pos_underscore >= 0:
+    str1 = instr[:pos_underscore]
+    str2 = instr[pos_underscore+1:]
+    if len(str1) > 1:
+      str1 = r"{\rm " + str1.replace("_", r"\_") + r"}"
+    if str2:
+      ret_val = str1 + r"_{" + str2 + r"}"
+    else:
+      ret_val = str1
+  else:
+    str1 = instr
+    if len(str1) > 1:
+      ret_val = r"{\rm " + str1 + r"}"
+    else:
+      ret_val = str1
+
+  return ret_val
+#endregion
+
+#region (4/4) Draw bussproof style Trees ## ------------------------------------
 from matplotlib import pyplot as plt
 
 class Tbox: # text object together with its position and size
@@ -641,3 +725,4 @@ class GNode: # graph node
       # draw subtrees
       for kid in self.children:
         kid.draw_tree(plt1)
+# endregion

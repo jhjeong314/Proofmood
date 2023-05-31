@@ -126,25 +126,6 @@ def identifier_to_latex(instr):
 
   return ret_val
 
-# def identifier_to_latex(instr):
-#   pos_underscore = instr.rfind('_')
-#   if pos_underscore >= 0:
-#     str1 = instr[:pos_underscore]
-#     str2 = instr[pos_underscore+1:]
-#     if len(str1) > 1:
-#       str1 = r"{\rm " + str1.replace("_", r"\_") + r"}"
-#     if str2:
-#       ret_val = str1 + r"_{" + str2 + r"}"
-#     else:
-#       ret_val = str1
-#   else:
-#     str1 = instr
-#     if len(str1) > 1:
-#       ret_val = r"{\rm " + str1 + r"}"
-#     else:
-#       ret_val = str1
-
-#   return ret_val
 
 class Node:
   LATEX_DICT = dict([("not", r"\neg"), ("and", r"\wedge"), ("or", r"\vee"),

@@ -1,5 +1,6 @@
 {
   "cSpell.words": [
+    "cdot",
     "CONSTS",
     "emptyset",
     "FCTN",
@@ -7,12 +8,16 @@
     "httpimport",
     "infty",
     "isnumeral",
+    "leftrightarrow",
     "ndivides",
     "nsubseteq",
     "nsupseteq",
     "nterm",
     "Oper",
     "operatorname",
+    "oplus",
+    "otimes",
+    "rightarrow",
     "simeq",
     "subseteq",
     "subsetneqq",
