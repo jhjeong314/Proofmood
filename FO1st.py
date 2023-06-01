@@ -1,6 +1,6 @@
 # This file is imported by FO_parser1st.ipynb.
 
-## (1/3) Tokenization ## ---------------------------------------------------------
+## (1/3) Tokenization ## ----------------------------------------------
 
 #region Tokenization comments
 #### Constants
@@ -75,27 +75,26 @@ import re
 
 class Token:
   CONSTS = [ "emptyset", "infty" ]
-  FCTN_PRE = [ "-" ]
-  FCTN_POST = [ "!", "'", "^#", "^+", "^-", "^*", "^o", "^inv" ]
-  FCTN_IN_1 = [ "+", "-", "cap", "cup", "oplus" ]
-  FCTN_IN_2 = [ "*", "/", "%", "times", "div", "otimes", "cdot" ]
-  FCTN_IN_3 = [ "^" ]
+  OPER_PRE = [ "-" ]
+  OPER_POST = [ "!", "'", "^#", "^+", "^-", "^*", "^o", "^inv" ]
+  OPER_IN_1 = [ "+", "-", "cap", "cup", "oplus" ]
+  OPER_IN_2 = [ "*", "/", "%", "times", "div", "otimes", "cdot" ]
+  OPER_IN_3 = [ "^" ]
   PRED_IN = [ "!=", "<", "<=", ">", ">=", "in", "nin", "subseteq",
               "nsubseteq", "subsetneqq", "supseteq", "nsupseteq",
               "supsetneqq", "divides", "ndivides", "sim", "simeq",
               "cong", "equiv", "approx" ]
-  RESERVED_WORDS = set(CONSTS + FCTN_PRE + FCTN_POST + FCTN_IN_1 + 
-                      FCTN_IN_2 + FCTN_IN_3 + PRED_IN)
-  
+  RESERVED_WORDS = set(CONSTS + OPER_PRE + OPER_POST + OPER_IN_1 + 
+                      OPER_IN_2 + OPER_IN_3 + PRED_IN)
   SPECIAL_CHARS = "-!'^#+*/%=<>()[]{},"
 
   def __init__(self, value):
     CONSTS = self.CONSTS
-    FCTN_PRE = self.FCTN_PRE
-    FCTN_POST = self.FCTN_POST
-    FCTN_IN_1 = self.FCTN_IN_1
-    FCTN_IN_2 = self.FCTN_IN_2
-    FCTN_IN_3 = self.FCTN_IN_3
+    OPER_PRE = self.OPER_PRE
+    OPER_POST = self.OPER_POST
+    OPER_IN_1 = self.OPER_IN_1
+    OPER_IN_2 = self.OPER_IN_2
+    OPER_IN_3 = self.OPER_IN_3
     PRED_IN = self.PRED_IN
 
     self.value = value # a string
@@ -136,24 +135,24 @@ class Token:
       self.token_type = 'const'
       self.precedence = 9
     # reserved words (function symbols)
-    elif value in FCTN_IN_1:
-      self.token_type = 'fctn_in_1'
+    elif value in OPER_IN_1:
+      self.token_type = 'oper_in_1'
       self.arity = 2
       self.precedence = 1
-    elif value in FCTN_IN_2:
-      self.token_type = 'fctn_in_2'
+    elif value in OPER_IN_2:
+      self.token_type = 'oper_in_2'
       self.arity = 2
       self.precedence = 2
-    elif value in FCTN_IN_3:
-      self.token_type = 'fctn_in_3'
+    elif value in OPER_IN_3:
+      self.token_type = 'oper_in_3'
       self.arity = 2
       self.precedence = 3
-    elif value in FCTN_PRE:
-      self.token_type = 'fctn_pre'
+    elif value in OPER_PRE:
+      self.token_type = 'oper_pre' # unary '-'
       self.arity = 1
       self.precedence = 1
-    elif value in FCTN_POST:
-      self.token_type = 'fctn_post'
+    elif value in OPER_POST:
+      self.token_type = 'oper_post'
       self.arity = 1
       self.precedence = 4
     # reserved words (predicate symbols)
@@ -161,7 +160,7 @@ class Token:
       self.token_type = 'pred_in'
       self.arity = 2
     else:
-      # numeral, variable, constant, fctn_pre, pred_pre       
+      # numeral, variable, constant, func_pre, pred_pre       
       len_s = len(value)
       if self.isnumeral(value):
         self.token_type = 'numeral'
@@ -177,14 +176,14 @@ class Token:
           raise ValueError(f"'{value}' is invalid constant symbol (Token)")        
       elif value[0] in "fgh":
         if len_s==1 or Token.isword(value[1:]):
-          self.token_type = 'fctn_pre'
+          self.token_type = 'func_pre'
           self.arity = self.get_arity(value)
         else:
           raise ValueError(f"'{value}' is invalid function symbol (Token)")
       elif Token.isword(value, "upper"):
         if len_s==1 or Token.isword(value[1:]):
-          self.token_type = 'pred_pre' 
           self.arity = self.get_arity(value)
+          self.token_type = 'pred_pre' if self.arity > 0 else 'prop_letter'
         else:
           raise ValueError(f"'{value}' is invalid predicate symbol (Token)")
       else:
@@ -242,8 +241,9 @@ class Token:
 def tokenizer(input_text):
   import re
   tokens = []
-  # split the input text into a list of tokens at word boundaries and whitespaces
-  # then remove empty strings and strip off leading and trailing whitespaces
+  # split the input text into a list of tokens at word boundaries and 
+  # whitespaces then remove empty strings and strip off leading and 
+  # trailing whitespaces
   li = [s.strip() for s in re.split(r"\b|\s", input_text, re.ASCII) 
                   if s.strip()]
   for s in li: # s is a string
@@ -293,12 +293,39 @@ def print_in_chunk(li, chunk_size=5): # li is any iterable
   for i, s in enumerate(li):
     print(s, end=" " if i % chunk_size != chunk_size-1 else "\n")
 
-## (2/3) Parsing ## ---------------------------------------------------------
+## (2/3) Parsing ## ---------------------------------------------------
+
+# <formula> ::= { <comp_fmla1> "imp" } <comp_fmla1> | 
+#                 <comp_fmla1> { ( "iff" | "xor") <comp_fmla1> }
+# <comp_fmla1> ::= <comp_fmla2> { ("and" | "or") <comp_fmla2> }
+# <comp_fmla2> ::= { ("not" | <quantifier>) } '(' <formula> ')' | 
+#                  { ("not" | <quantifier>) } <atom>
+# <quantifier> ::= "forall" | "exists"
+# <atom> ::= "bot" | <prop_letter> | 
+#            <pred_pre> "(" <term> {',' <term>} ")" |
+#            <term> <pred_in> <term>
+
+# # The "bot" connective is typically classified as a compound formula, 
+# # but when it comes to parsing, it is treated as an atom.
+# # prop_letter, pred_pre, pred_in are defined in the Token class.
+
+# <term> ::= (<term1> | <nterm1>) { <oper_in_1> <term1> }
+# <nterm1> ::= <oper_pre> { <oper_pre> } <term1>
+# <term1> ::= <factor> { <oper_in_2> <factor> }
+# <factor> ::= { <factor_exp> <oper_in_3> } <factor_exp>
+# <factor_exp> ::= <factor_postfix> { <oper_postfix> }
+# <factor_postfix> ::= "(" <term> ")"  | <func_call> | <identifier>
+# <func_call> ::= <func_pre> '(' <term> {',' <term>} ')' 
+# <identifier> ::= <const> | <numeral> | <var>
+
+# # oper_in_1, oper_pre, oper_in_2, oper_in_3, oper_post, 
+# #   func_pre, const, numeral, var are defined in the Token class.
 
 class Node:
-  LATEX_DICT = dict([("not", r"\neg"), ("and", r"\wedge"), ("or", r"\vee"),
-                     ("imp", r"\rightarrow"), ("iff", r"\leftrightarrow"),
-                     ("xor", r"\nleftrightarrow"), ("bot", r"\bot")])
+  LATEX_DICT = dict(
+    [("not", r"\neg"), ("and", r"\wedge"), ("or", r"\vee"),
+    ("imp", r"\rightarrow"), ("iff", r"\leftrightarrow"),
+    ("xor", r"\nleftrightarrow"), ("bot", r"\bot")])
 
   def __init__(self, token, children=None):
     self.token = token # the node is labeled with a Token object
@@ -308,7 +335,7 @@ class Node:
     return self.build_polish_notation()
 
   def build_polish_notation(self, opt=False):
-    ret_str = f"self.token" if opt else f"{self.token.value}"
+    ret_str = f"{self.token}" if opt else f"{self.token.value}"
     if self.children:
       ret_str += ' '
     ret_str += ' '.join(child.build_polish_notation(opt) 
@@ -328,9 +355,10 @@ class Node:
 
     if not self.children: 
       if self.token.token_type == 'prop_letter':
-        # All but the last occurrence of an underscore in an identifier are escaped with a backslash.
-        # Identifier string is romanized except the end substrings after the
-        # last underscore, which are subscripted with _{}.
+        # All but the last occurrence of an underscore in an identifier
+        # are escaped with a backslash.
+        # Identifier string is romanized except the end substrings after 
+        # the last underscore, which are subscripted with _{}.
 
         return identifier_to_latex(self.token.value)
       else: # self.token.value could be 'bot'
@@ -403,7 +431,8 @@ class Node:
         kid1, kid2 = self.children
         kid1_str = kid1.build_bussproof_rec()
         kid2_str = kid2.build_bussproof_rec()
-        the_str = kid1_str + kid2_str + r"\BinaryInfC" + r"{$" + token_str + "$}\n"
+        the_str = (kid1_str + kid2_str + r"\BinaryInfC" + r"{$" + 
+                   token_str + "$}\n")
       else: # arity is 1
         kid1 = self.children[0]
         kid1_str = kid1.build_bussproof_rec()
@@ -420,6 +449,8 @@ class Node:
     draw_ast(self, verbose)
 
 class Parser:
+  AND_TOKEN = Token('and')
+
   def __init__(self, tokens):
     self.tokens = tokens
     self.current_token = None
@@ -436,105 +467,278 @@ class Parser:
 
   def check_token_type(self, token_types) -> bool:
     # token_types can be a string or a tuple of strings
-    # Check if self.current_token is of type token_types if token_types is a string
-    # or belongs to token_types if token_types is a tuple of strings.
+    # Check if self.current_token is of type token_types if token_types
+    #   is a string, or belongs to token_types if token_types 
+    #   is a tuple of strings.
     token = self.current_token
     if token is None:
       return False
     elif type(token_types) is not tuple: # must be a string in this case
         return token.token_type == token_types
-    elif token.token_type in token_types:
-      return True
     else:
-      return False
+      return token.token_type in token_types
     
-  def check_token_value(self, token_value: str) -> bool:
+  def check_token_value(self, token_values) -> bool:
     # Check if self.current_token is of value token_value.
     token = self.current_token
     if token is None:
       return False
-    elif token.value == token_value:
-      return True
+    elif type(token_values) is not tuple: # must be a string in this case
+      return token.value == token_values
     else:
-      return False
+      return token.value in token_values
     
-  def parse(self):
-    return self.expr() 
+  def parse(self) -> Node:
+    return self.formula() 
   
-  def expr(self):
-    node = self.term()  
+  def formula(self) -> Node:
+    node = self.comp_fmla1()  
 
     while self.check_token_type('conn_arrow'): # 'imp', 'iff', 'xor'
       token = self.current_token
+      if token is None:
+        raise SyntaxError(f"Expected a token at {self.index}," +
+                f" in expr(), but {self.current_token} is None.")
       self.advance()
       if token.value == 'imp':
-        right_term = self.expr()
+        right_node = self.formula() # recursive call for right-assoc
       else:
-        right_term = self.term()
+        right_node = self.comp_fmla1() # left-assoc
       
-      node = Node(token, [node, right_term]) 
+      node = Node(token, [node, right_node]) 
     
     return node
     
-  def term(self):
-    node = self.factor()
+  def comp_fmla1(self) -> Node:
+    node = self.comp_fmla2()
 
     while self.check_token_type('conn_2ary'): # 'and', 'or'
       token = self.current_token
       self.advance()
-      right_factor = self.factor()
-      node = Node(token, [node, right_factor]) # left associative
+      right_node = self.comp_fmla2()
+      node = Node(token, [node, right_node]) # left-assoc
 
     return node
 
-  def factor(self):
+  def comp_fmla2(self) -> Node:
     if self.check_token_type('lparen'):
       self.advance()
-      node = self.expr()
+      node = self.formula()
       if self.check_token_type('rparen'):
         self.advance()
       else:
         raise SyntaxError(f"Expected ')' at {self.index}," +
-                          f" in factor(), but {self.current_token} is given.")
-    elif self.check_token_type('conn_1ary'): # 'not'
+                f" in factor(), but {self.current_token} is given.")
+    elif self.check_token_type(('conn_1ary','quantifier')): 
+        # 'not' or 'forall' or 'exists'
       token = self.current_token 
       self.advance()
-      right_factor = self.factor() # recursive call
-      node = Node(token, [right_factor])
+      right_node = self.comp_fmla2() # recursive call for right-assoc
+      node = Node(token, [right_node])
     else:
       node = self.atom()
 
     return node
         
-  def atom(self):
+  def atom(self) -> Node:  # type: ignore # ignore Pylance error
     if self.current_token is not None:
       token = self.current_token
       if self.check_token_type(('conn_0ary', 'prop_letter')):
+        # atomic formula case
+        self.advance()
+        return Node(token)
+      elif self.check_token_type('pred_pre'): 
+        # P(t1,t2,...) case
+        self.advance()
+        if self.check_token_type('lparen'):
+          self.advance()
+          args = []
+          while True:
+            args.append(self.term())
+            if self.check_token_type('comma'):
+              self.advance()
+            elif self.check_token_type('rparen'):
+              break
+            else:
+              raise SyntaxError(
+                f"Expected ',' or ')' after predicate argument at " +
+                f"{self.index} in atom(), but {self.current_token}" +
+                f" is given.")
+          # arity check
+          if token.arity is None or token.arity != len(args):
+            raise SyntaxError(
+              f"Predicate {token.value} expects {token.arity} " +
+              f"arguments, but {len(args)} were given")
+          self.advance()
+          return Node(token, args)
+        else:
+          raise SyntaxError(
+            f"Expected '(' after predicate symbol at {self.index}" +
+            f" in atom(), but {self.current_token} is given.")
+      else:
+        # t1 pred_in t2 case (such as t1 = t2, t1 < t2 etc.)
+        # t1 = t2 < t3 ~ t4 is parsed as 
+        #   (t1 = t2 and t2 < t3) and t3 ~ t4
+        node = self.term()
+        saved_node = None
+        while self.check_token_type(('equality', 'pred_in')):
+          token = self.current_token
+          self.advance()
+          right_node = self.term()
+          if saved_node is None:
+            node = Node(token, [node, right_node])
+            saved_node = right_node
+          else:
+            new_node = Node(token, [saved_node, right_node])
+            node = Node(self.AND_TOKEN, [node, new_node])
+          return node
+    else:
+      raise SyntaxError("Unexpected end of input, in atom()")
+      
+
+  def term(self) -> Node:
+    if self.check_token_value('-'):
+      node = self.nterm1() 
+    else:
+      node = self.term1()
+
+    while self.check_token_type('oper_in_1'):
+      token = self.current_token
+      self.advance()
+      right_node = self.term1()
+      node = Node(token, [node, right_node])
+    return node
+  
+  def nterm1(self) -> Node:
+    token = self.current_token
+    if token is None or not self.check_token_value('-'):      
+       node = self.term()
+    else:
+      token.token_type = 'oper_pre'
+      self.advance()
+      unary_node = self.nterm1() # recursive call for right-assoc
+      node = Node(token, [unary_node])
+
+    return node
+  
+  def term1(self) -> Node:
+    node = self.factor()
+    while self.check_token_type('oper_in_2'):
+      token = self.current_token
+      self.advance()
+      right_node = self.factor()
+      node = Node(token, [node, right_node])
+
+    return node
+
+  def factor(self) -> Node:
+    node = self.factor_exp()
+
+    if self.check_token_type('oper_in_3'):
+      token = self.current_token
+      self.advance()
+      right_node = self.factor() # recursive call for right-assoc
+      node = Node(token, [node, right_node])
+
+    return node
+  
+  def factor_exp(self) -> Node:
+    node = self.factor_postfix()
+
+    while self.check_token_type('oper_post'):
+      token = self.current_token
+      self.advance()
+      node = Node(token, [node])
+
+    return node
+  
+  def factor_postfix(self) -> Node:
+    if self.check_token_type('lparen'):
+      self.advance()
+      node = self.term()
+      if self.check_token_type('rparen'):
+        self.advance()
+      else:
+        raise SyntaxError(
+          f"Expected ')' after term at {self.index}," +
+          f" in factor_postfix(), but {self.current_token} is given.")
+    elif self.check_token_type('func_pre'):
+      node = self.func_call()
+    else:
+      node = self.identifier()
+
+    return node
+  
+  def func_call(self) -> Node:
+    if self.current_token is not None:
+      token = self.current_token
+      if self.check_token_type('func_pre'):
+        self.advance()
+        if self.check_token_type('lparen'):
+          self.advance()
+          args = []
+          while True:
+            args.append(self.term())
+            if self.check_token_type('comma'):
+              self.advance()
+            elif self.check_token_type('rparen'):
+              break
+            else:
+              raise SyntaxError(
+                f"Expected ',' or ')' after function argument at " +
+                f"{self.index} in func_call(), but {self.current_token}" +
+                f" is given.")
+          # arity check
+          if token.arity is None or token.arity != len(args):
+            raise SyntaxError(
+              f"Function {token.value} expects {token.arity} " +
+              f"arguments, but {len(args)} were given")
+          self.advance()
+          return Node(token, args)  
+        else:
+          raise SyntaxError(
+            f"Expected '(' after function symbol at {self.index}" +
+            f" in func_call(), but {self.current_token} is given.")
+      else:
+        raise SyntaxError(f"Expected function symbol at {self.index} in" +
+                          f" func_call(), but {token} is given.")
+    else:
+      raise SyntaxError("Unexpected end of input, in func_call()")
+
+  def identifier(self) -> Node:
+    if self.current_token is not None:
+      token = self.current_token
+      if self.check_token_type(('const', 'numeral', 'var')):
         self.advance()
         return Node(token)
       else:
-        raise SyntaxError(f"Expected bot or prop_letter at {self.index}," +
-                          f" in atom(), but {token} is given.")
+        raise SyntaxError(f"Expected identifier at {self.index} in" +
+                          f" identifier(), but {token} is given.")
     else:
-      raise SyntaxError("Unexpected end of input, in atom()")  
-    
-def parse_text(input_text):
+      raise SyntaxError("Unexpected end of input, in identifier()")
+
+def parse_text(input_text, opt='formula'): # opt = 'formula' or 'term'
   tokens = tokenizer(input_text)
   parser = Parser(tokens)
-  ast = parser.parse() # ast = Abstract Syntax Tree
+  if opt=='formula':
+    ast = parser.parse() # ast = Abstract Syntax Tree
+  else:
+    ast = parser.term()
   if parser.current_token is not None:
-    raise SyntaxError(f"Unexpected token {parser.current_token} at {parser.index}," +
-                      f" in parse_text(). Expected end of input.")
+    raise SyntaxError(
+      f"Unexpected token '{parser.current_token}' at {parser.index}," +
+      f" in parse_text(), while end of input expected.")
   return ast
 
-#region (3/3) Utils for rendering AST ## ------------------------------------
+#region (3/3) Utils for rendering AST ## ------------------------------
 
 def build_GNode(ast, xpos, ypos, ax, r):
   LATEX_DICT = Node.LATEX_DICT
   
   # post-order traversal (unlike the other 3 methods)
   if(ast.children):
-    children = [build_GNode(kid, xpos, ypos, ax, r) for kid in ast.children]
+    children = [build_GNode(kid, xpos, ypos, ax, r) 
+                for kid in ast.children]
   else:
     children = []
   label = ast.token.value
@@ -551,7 +755,8 @@ def build_GNode(ast, xpos, ypos, ax, r):
 def draw_ast(ast, verbose=False):
   import matplotlib.pyplot as plt
 
-  plt.rcParams["mathtext.fontset"] = "cm" # cm = computer modern by Donald Knuth
+  plt.rcParams["mathtext.fontset"] = "cm" 
+    # cm = computer modern by Donald Knuth
   plt.rcParams["figure.dpi"] = 300 # default 100
   fig, ax = plt.subplots(1, 1, figsize=(1.5, 1))
   ax.set(aspect='equal')
@@ -590,8 +795,7 @@ def identifier_to_latex(instr):
   return ret_val
 #endregion
 
-#region (4/4) Draw bussproof style Trees ## ------------------------------------
-from matplotlib import pyplot as plt
+#region (4/4) Draw bussproof style Trees ## ---------------------------
 
 class Tbox: # text object together with its position and size
   def __init__(self, txt, ax, r):
@@ -600,7 +804,8 @@ class Tbox: # text object together with its position and size
     self.txt = txt # matplotlib.text.Text object
       # txt.get_text() is the label (latex source string)
     bbox = txt.get_window_extent(renderer=r) # unit: pixel
-    bbox_d = bbox.transformed(ax.transData.inverted()) # unit: data coordinate
+    bbox_d = bbox.transformed(ax.transData.inverted()) 
+      # unit: data coordinate
     x, y = txt.get_position()
     self.x = x
     self.y = y
@@ -608,10 +813,12 @@ class Tbox: # text object together with its position and size
     self.height = bbox_d.height
 
   def __str__(self):
-    return f"x = {self.x:.3f}, y = {self.y:.3f}, w = {self.width:.3f}, h = {self.height:.3f}"
+    return (f"x = {self.x:.3f}, y = {self.y:.3f}, " + 
+            f"w = {self.width:.3f}, h = {self.height:.3f}")
     
 class GNode: # graph node
-  def __init__(self, txt, ax, r, unit_len = 0.12, kx=3, ky=1, overhang=0.14, children=None):
+  def __init__(self, txt, ax, r, unit_len = 0.12, kx=3, ky=1, 
+               overhang=0.14, children=None):
     # txt = ax.text(pos_x, pos_y, string, ..) is a text object
     # r is a renderer
     # dx is the horizontal distances between the children
@@ -619,27 +826,31 @@ class GNode: # graph node
     # children is a list of Node objects    
     # Root's position is (0, 0). When rendering, we will shift the
     # node's center to the center of the figure.
-    # The root and each child's position is relative to the center of the node.
+    # The root and each child's position is relative to the center
+    # of the node.
     
-    self.parent = None # This changes later iff self is not the real(one and only) root.
+    self.parent = None # This changes later iff 
+                       # self is not the real(one and only) root.
     self.x = self.y = 0
     self.root = tbox = Tbox(txt, ax, r)
     self.children = None
     self.unit_height = unit_len
     self.overhang = overhang
-    # Both (self.x, self.y) and (self.root.x, self.root.y) are positions of 
-    # the root of self.  
+    # Both (self.x, self.y) and (self.root.x, self.root.y) are 
+    # positions of the root of self.  
     # The meaning of (self.x, self.y) depends on self.parent.
     # If self.parent is None, then (self.x, self.y) is not used at all.
-    # If self.parent is not None, then (self.x, self.y) is the position of the root of self
-    # relative to the root of self.parent.
+    # If self.parent is not None, then (self.x, self.y) is the position 
+    # of the root of self relative to the root of self.parent.
     # (self.root.x, self.root.y) has meaning iff self.parent is None.
-    # It is the position (x, y) given when the text object was created by ax.text(x, y, ...) 
+    # It is the position (x, y) given when the text object was created
+    # by ax.text(x, y, ...) 
     # Normally it is (center_x, center_y) of the axis.
 
     dx = kx * unit_len
     dy = ky * unit_len
-    unit_height = self.unit_height # height of each node (considered as a rectangle)
+    unit_height = self.unit_height 
+      # height of each node (considered as a rectangle)
     if children:
       self.children = children
       # Compute the total width of the children.
@@ -650,9 +861,11 @@ class GNode: # graph node
       tot_height = max_height + dy + unit_height
       self.height = tot_height
       # Get the position of each kid's root relative to the root of self.
-      # dlrkids = distance between the leftmost kid's root and the rightmost kid's root
-      #           = tot_width - (children[0].width + children[-1].width)/2
-      # xvec = [-dlrkids/2, += children[0].width/2 + children[1].width/2 + dx, += ...]
+      # dlrkids = distance between the leftmost kid's root and the 
+      # rightmost kid's root
+      #    = tot_width - (children[0].width + children[-1].width)/2
+      # xvec = [-dlrkids/2, += children[0].width/2 + 
+      #   children[1].width/2 + dx, += ...]
       # xvec[-1] must be dlrkids/2
       # y = dy
       wl = children[0].width # width of the leftmost child
@@ -664,9 +877,11 @@ class GNode: # graph node
         if i==0:
           kid.x = -dlrkids/2 
         else:
-          kid.x = children[i-1].x + children[i-1].width/2 + dx + children[i].width/2
+          kid.x = children[i-1].x + children[i-1].width/2 + dx + \
+                  children[i].width/2
       
-      assert abs(children[-1].x - dlrkids/2) < 1e-6, "the last child's x is wrong"
+      assert abs(children[-1].x - dlrkids/2) < 1e-6, \
+             "the last child's x is wrong"
 
     else:
       self.children = []
@@ -689,9 +904,12 @@ class GNode: # graph node
   def draw_tree(self, plt1):
     # Draw the root.
     if self.parent is None:
-      x_ref, y_ref = (self.root.x, self.root.y) # normally (center_x, center_y)
-      if self.children: # Then we shift the root down and maybe left/right too
-          # so that the center of the whole tree coincides with the center of the axis.
+      x_ref, y_ref = (self.root.x, self.root.y) 
+        # normally (center_x, center_y)
+      if self.children: 
+          # Then we shift the root down and maybe left/right too
+          # so that the center of the whole tree coincides with 
+          # the center of the axis.
         node_left = self.children[0]
         node_right = self.children[-1]
         wl = node_left.width
@@ -702,7 +920,8 @@ class GNode: # graph node
         self.x, self.y = (x, y)
         # draw the horizontal line
         plt1.hlines(y + self.unit_height, x+node_left.x-self.overhang, 
-                    x+node_right.x+self.overhang, linewidth=0.2, color='black')
+                    x+node_right.x+self.overhang, linewidth=0.2, 
+                    color='black')
       else: # Then there is no need to shift the root.
         pass
       self.root.txt.set_alpha(1)
@@ -720,7 +939,8 @@ class GNode: # graph node
       node_left = self.children[0]
       node_right = self.children[-1]
       plt1.hlines(self.y + self.unit_height, 
-                   self.x + node_left.x - self.overhang, self.x + node_right.x + self.overhang,
+                   self.x + node_left.x - self.overhang, 
+                   self.x + node_right.x + self.overhang,
                    linewidth=0.2, color='black')
       # draw subtrees
       for kid in self.children:

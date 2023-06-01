@@ -2,7 +2,7 @@
 
 # <expr> ::= { <term> "imp" } <term> | <term> { ( "iff" | "xor") <term> }
 # <term> ::= <factor> { ("and" | "or") <factor> }
-# <factor> ::= '(' <expr> ')' | { "not" } <atom>
+# <factor> ::= { "not" } '(' <expr> ')' | { "not" } <atom>
 # <atom> ::= [A-Z] { [A-Za-z0-9_] } | "bot"
 
 ## (1/2) Parse ## ---------------------------------------------------------
@@ -140,7 +140,7 @@ class Node:
     return self.build_polish_notation()
 
   def build_polish_notation(self, opt=False):
-    ret_str = f"self.token" if opt else f"{self.token.value}"
+    ret_str = f"{self.token}" if opt else f"{self.token.value}"
     if self.children:
       ret_str += ' '
     ret_str += ' '.join(child.build_polish_notation(opt) 
@@ -298,6 +298,9 @@ class Parser:
 
     while self.check_token_type('conn_arrow'): # 'imp', 'iff', 'xor'
       token = self.current_token
+      if token is None:
+        raise SyntaxError(f"Expected a token at {self.index}," +
+                f" in expr(), but {self.current_token} is None.")
       self.advance()
       if token.value == 'imp':
         right_term = self.expr()

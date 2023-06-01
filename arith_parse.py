@@ -402,8 +402,9 @@ class Parser:
             elif self.check_token_type('rparen'):
               break
             else:
-              raise SyntaxError(f"Expected ',' or ')' after function argument at " +
-                                f"{self.index} in, but {self.current_token} is given.")
+              raise SyntaxError(
+                f"Expected ',' or ')' after function argument at " +
+                f"{self.index} in func_call(), but {self.current_token} is given.")
           
           # arity check
           if token.arity is None or token.arity != len(args):
