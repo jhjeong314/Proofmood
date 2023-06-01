@@ -87,6 +87,7 @@ class Token:
   RESERVED_WORDS = set(CONSTS + OPER_PRE + OPER_POST + OPER_IN_1 + 
                       OPER_IN_2 + OPER_IN_3 + PRED_IN)
   SPECIAL_CHARS = "-!'^#+*/%=<>()[]{},"
+  PRED_TYPES = ("pred_pre", "pred_in", "equality", "prop_letter")
 
   def __init__(self, value):
     CONSTS = self.CONSTS
@@ -295,6 +296,7 @@ def print_in_chunk(li, chunk_size=5): # li is any iterable
 
 ## (2/3) Parsing ## ---------------------------------------------------
 
+#region Comment
 # <formula> ::= { <comp_fmla1> "imp" } <comp_fmla1> | 
 #                 <comp_fmla1> { ( "iff" | "xor") <comp_fmla1> }
 # <comp_fmla1> ::= <comp_fmla2> { ("and" | "or") <comp_fmla2> }
@@ -320,6 +322,7 @@ def print_in_chunk(li, chunk_size=5): # li is any iterable
 
 # # oper_in_1, oper_pre, oper_in_2, oper_in_3, oper_post, 
 # #   func_pre, const, numeral, var are defined in the Token class.
+#endregion
 
 class Node:
   LATEX_DICT = dict(
@@ -327,30 +330,93 @@ class Node:
     ("imp", r"\rightarrow"), ("iff", r"\leftrightarrow"),
     ("xor", r"\nleftrightarrow"), ("bot", r"\bot")])
 
+  @staticmethod
+  def identifier_to_latex(instr):
+    pos_underscore = instr.rfind('_')
+    if pos_underscore >= 0:
+      str1 = instr[:pos_underscore]
+      str2 = instr[pos_underscore+1:]
+      if len(str1) > 1:
+        str1 = r"{\rm " + str1.replace("_", r"\_") + r"}"
+      if str2:
+        ret_val = str1 + r"_{" + str2 + r"}"
+      else:
+        ret_val = str1
+    else:
+      str1 = instr
+      if len(str1) > 1:
+        ret_val = r"{\rm " + str1 + r"}"
+      else:
+        ret_val = str1
+
+    return ret_val
+
   def __init__(self, token, children=None):
     self.token = token # the node is labeled with a Token object
     self.children = children if children else [] # list of Node objects
+    self.type = 'formula' if self.token.token_type in Token.PRED_TYPES else 'term' 
 
   def __str__(self):
     return self.build_polish_notation()
 
-  def build_polish_notation(self, opt=False):
-    ret_str = f"{self.token}" if opt else f"{self.token.value}"
+  def build_polish_notation(self, operOpt=False):
+    ret_str = f"{self.token}" if operOpt else f"{self.token.value}"
     if self.children:
       ret_str += ' '
-    ret_str += ' '.join(child.build_polish_notation(opt) 
+    ret_str += ' '.join(child.build_polish_notation(operOpt) 
                         for child in self.children)
     return ret_str
   
-  def build_RPN(self, opt=False):
+  def build_RPN(self, operOpt=False):
     ret_str = ''
     if self.children:
-      ret_str += ' '.join(child.build_RPN(opt) 
+      ret_str += ' '.join(child.build_RPN(operOpt) 
                           for child in self.children) + ' '
-    ret_str += f"self.token" if opt else f"{self.token.value}"
+    ret_str += f"{self.token}" if operOpt else f"{self.token.value}"
     return ret_str
-  
+
+  def build_bussproof_rec(self):
+    LATEX_DICT = self.LATEX_DICT
+
+    if not self.children: 
+      if self.token.token_type == 'prop_letter':
+        label = self.identifier_to_latex(self.token.value)
+      else: # self.token.value could be 'bot'
+        label = LATEX_DICT[self.token.value]
+
+      the_str = r"\AxiomC" + r"{$" + label + "$}\n"
+    else: # self.token is a connective
+      token_str = LATEX_DICT[self.token.value]
+      if self.token.arity == 2:
+        kid1, kid2 = self.children
+        kid1_str = kid1.build_bussproof_rec()
+        kid2_str = kid2.build_bussproof_rec()
+        the_str = (kid1_str + kid2_str + r"\BinaryInfC" + r"{$" + 
+                   token_str + "$}\n")
+      else: # arity is 1
+        kid1 = self.children[0]
+        kid1_str = kid1.build_bussproof_rec()
+        the_str = kid1_str + r"\UnaryInfC" + r"{$" + token_str + "$}\n"
+
+    return the_str
+
+  def build_bussproof(self):
+    the_str = self.build_bussproof_rec()
+
+    return r"\begin{prooftree}" + "\n" + the_str + r"\end{prooftree}" + "\n"
+
   def build_infix_latex(self):
+    if(self.type == 'term'):
+      return self.build_infix_latex_term()
+    else: # self.type == 'formula'
+      return self.build_infix_latex_formula()
+    
+  def build_infix_latex_term(self):
+    LATEX_DICT = self.LATEX_DICT
+
+    pass
+
+  def build_infix_latex_formula(self):  
     LATEX_DICT = self.LATEX_DICT
 
     if not self.children: 
@@ -360,7 +426,7 @@ class Node:
         # Identifier string is romanized except the end substrings after 
         # the last underscore, which are subscripted with _{}.
 
-        return identifier_to_latex(self.token.value)
+        return self.identifier_to_latex(self.token.value)
       else: # self.token.value could be 'bot'
         return LATEX_DICT[self.token.value]
     else: # self.token is a connective
@@ -414,37 +480,7 @@ class Node:
         ret_str += token_str + kid1_str
 
       return ret_str  
-    
-  def build_bussproof_rec(self):
-    LATEX_DICT = self.LATEX_DICT
 
-    if not self.children: 
-      if self.token.token_type == 'prop_letter':
-        label = identifier_to_latex(self.token.value)
-      else: # self.token.value could be 'bot'
-        label = LATEX_DICT[self.token.value]
-
-      the_str = r"\AxiomC" + r"{$" + label + "$}\n"
-    else: # self.token is a connective
-      token_str = LATEX_DICT[self.token.value]
-      if self.token.arity == 2:
-        kid1, kid2 = self.children
-        kid1_str = kid1.build_bussproof_rec()
-        kid2_str = kid2.build_bussproof_rec()
-        the_str = (kid1_str + kid2_str + r"\BinaryInfC" + r"{$" + 
-                   token_str + "$}\n")
-      else: # arity is 1
-        kid1 = self.children[0]
-        kid1_str = kid1.build_bussproof_rec()
-        the_str = kid1_str + r"\UnaryInfC" + r"{$" + token_str + "$}\n"
-
-    return the_str
-
-  def build_bussproof(self):
-    the_str = self.build_bussproof_rec()
-
-    return r"\begin{prooftree}" + "\n" + the_str + r"\end{prooftree}"
-  
   def draw_tree(self, verbose=False):
     draw_ast(self, verbose)
 
@@ -489,10 +525,16 @@ class Parser:
       return token.value in token_values
     
   def parse(self) -> Node:
-    return self.formula() 
+    # determine the type of self.tokens, whether it is a formula or a term
+    is_formula = any([token.token_type in Token.PRED_TYPES 
+                      for token in self.tokens])
+    if is_formula:
+      return self.formula() 
+    else:
+      return self.term()
   
   def formula(self) -> Node:
-    node = self.comp_fmla1()  
+    node = self.comp_fmla1() # compound formula type 1
 
     while self.check_token_type('conn_arrow'): # 'imp', 'iff', 'xor'
       token = self.current_token
@@ -510,7 +552,7 @@ class Parser:
     return node
     
   def comp_fmla1(self) -> Node:
-    node = self.comp_fmla2()
+    node = self.comp_fmla2() # compound formula type 2
 
     while self.check_token_type('conn_2ary'): # 'and', 'or'
       token = self.current_token
@@ -536,7 +578,7 @@ class Parser:
       right_node = self.comp_fmla2() # recursive call for right-assoc
       node = Node(token, [right_node])
     else:
-      node = self.atom()
+      node = self.atom() # atomic formula (not identifier, the atomic term)
 
     return node
         
@@ -591,7 +633,7 @@ class Parser:
           else:
             new_node = Node(token, [saved_node, right_node])
             node = Node(self.AND_TOKEN, [node, new_node])
-          return node
+        return node
     else:
       raise SyntaxError("Unexpected end of input, in atom()")
       
@@ -717,13 +759,10 @@ class Parser:
     else:
       raise SyntaxError("Unexpected end of input, in identifier()")
 
-def parse_text(input_text, opt='formula'): # opt = 'formula' or 'term'
+def parse_text(input_text):
   tokens = tokenizer(input_text)
   parser = Parser(tokens)
-  if opt=='formula':
-    ast = parser.parse() # ast = Abstract Syntax Tree
-  else:
-    ast = parser.term()
+  ast = parser.parse() # ast = Abstract Syntax Tree
   if parser.current_token is not None:
     raise SyntaxError(
       f"Unexpected token '{parser.current_token}' at {parser.index}," +
@@ -744,7 +783,7 @@ def build_GNode(ast, xpos, ypos, ax, r):
   label = ast.token.value
 
   if ast.token.token_type == 'prop_letter':
-    label = identifier_to_latex(label)
+    label = Node.identifier_to_latex(label)
   else:
     label = LATEX_DICT[label]
   
@@ -774,25 +813,6 @@ def draw_ast(ast, verbose=False):
 
   tree.draw_tree(plt)
 
-def identifier_to_latex(instr):
-  pos_underscore = instr.rfind('_')
-  if pos_underscore >= 0:
-    str1 = instr[:pos_underscore]
-    str2 = instr[pos_underscore+1:]
-    if len(str1) > 1:
-      str1 = r"{\rm " + str1.replace("_", r"\_") + r"}"
-    if str2:
-      ret_val = str1 + r"_{" + str2 + r"}"
-    else:
-      ret_val = str1
-  else:
-    str1 = instr
-    if len(str1) > 1:
-      ret_val = r"{\rm " + str1 + r"}"
-    else:
-      ret_val = str1
-
-  return ret_val
 #endregion
 
 #region (4/4) Draw bussproof style Trees ## ---------------------------

@@ -152,7 +152,7 @@ class Node:
     if self.children:
       ret_str += ' '.join(child.build_RPN(opt) 
                           for child in self.children) + ' '
-    ret_str += f"self.token" if opt else f"{self.token.value}"
+    ret_str += f"{self.token}" if opt else f"{self.token.value}"
     return ret_str
   
   def build_infix_latex(self):
