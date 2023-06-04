@@ -87,7 +87,10 @@ class Token:
   RESERVED_WORDS = set(CONSTS + OPER_PRE + OPER_POST + OPER_IN_1 + 
                       OPER_IN_2 + OPER_IN_3 + PRED_IN)
   SPECIAL_CHARS = "-!'^#+*/%=<>()[]{},"
-  PRED_TYPES = ("pred_pre", "pred_in", "equality", "prop_letter")
+  FMLA_TOKENS = ("pred_pre", "pred_in", "equality", "prop_letter", 
+    'conn_0ary') # an expression is a formula iff it has a token in FMLA_TOKENS
+  FMLA_ROOTS = FMLA_TOKENS + ("conn_1ary", "conn_2ary", "conn_arrow", 
+    "quantifier") # a parsed node is a formula iff it has a token in FMLA_ROOTS
 
   def __init__(self, value):
     CONSTS = self.CONSTS
@@ -354,7 +357,8 @@ class Node:
   def __init__(self, token, children=None):
     self.token = token # the node is labeled with a Token object
     self.children = children if children else [] # list of Node objects
-    self.type = 'formula' if self.token.token_type in Token.PRED_TYPES else 'term' 
+    self.type = ('formula' if self.token.token_type in Token.FMLA_ROOTS 
+                           else 'term')
 
   def __str__(self):
     return self.build_polish_notation()
@@ -526,7 +530,7 @@ class Parser:
     
   def parse(self) -> Node:
     # determine the type of self.tokens, whether it is a formula or a term
-    is_formula = any([token.token_type in Token.PRED_TYPES 
+    is_formula = any([token.token_type in Token.FMLA_TOKENS 
                       for token in self.tokens])
     if is_formula:
       return self.formula() 
