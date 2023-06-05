@@ -217,6 +217,19 @@ class Token:
     
   @staticmethod
   def get_arity(value: str) -> int:
+    #region cmt
+    # Get arity of a function symbol (starts with [fgh]) 
+    #   or a predicate symbol (starts with [A-Z]).
+    # If the last character is a decimal digit, it is the arity.
+    # Otherwise, if the first character is [fgh], it is 1.
+    #   Otherwise, it is 0. (prop_letter)
+    # Arity 0 is not allowed for function symbols because it is
+    #   reserved for constants.
+    # Arity cannot exceed 9 unless it is declared explicitly in
+    #   other ways.
+    # Arities are not rendered because it can be inferred from
+    #   the number of arguments.
+    #endregion cmt
     if not (d := value[-1]).isdecimal():
       if value[0] in "fgh":
         return 1
@@ -242,6 +255,7 @@ class Token:
 
     return f"{self.value} ({self.token_type}{s_arity}{s_precedence})"
 
+#region token class helper
 def tokenizer(input_text):
   import re
   tokens = []
@@ -296,6 +310,7 @@ def testTokenizer(input_text):
 def print_in_chunk(li, chunk_size=5): # li is any iterable
   for i, s in enumerate(li):
     print(s, end=" " if i % chunk_size != chunk_size-1 else "\n")
+#endregion token class helper
 
 ## (2/3) Parsing ## ---------------------------------------------------
 
@@ -331,14 +346,33 @@ class Node:
   LATEX_DICT = dict(
     [("not", r"\neg"), ("and", r"\wedge"), ("or", r"\vee"),
     ("imp", r"\rightarrow"), ("iff", r"\leftrightarrow"),
-    ("xor", r"\nleftrightarrow"), ("bot", r"\bot")])
+    ("xor", r"\nleftrightarrow"), ("bot", r"\bot"), ("emptyset", r"\varnothing"),
+    ("^o", r"^{\circ}"), ("^inv", r"^{-1}")])
+  #region Comment
+  # Other than the above and '^', for all reserved tokens, just use 
+  # ("token.value", r"\token.value") for the mapping.
+  # Special care is needed for '^'. See the build_infix_latex_formula() 
+  #   method below.
+  # For use-defined tokens, use the following static method token2latex().
+  #endregion
 
   @staticmethod
-  def identifier_to_latex(instr):
-    pos_underscore = instr.rfind('_')
+  def token2latex(token: Token) -> str:
+    #region Comment
+    # All but the last occurrence of an underscore in an identifier,
+    # i.e., the token.value, are escaped with a backslash.
+    # Identifier string is romanized except the end substrings after 
+    # the last underscore, which are subscripted with _{}.
+    # If the last character is a decimal and the previous char is not
+    # underscore, then it is not rendered because it is interpreted as 
+    # the arity of the symbol.
+    #endregion
+    label = token.value
+    pos_underscore = label.rfind('_')
+    
     if pos_underscore >= 0:
-      str1 = instr[:pos_underscore]
-      str2 = instr[pos_underscore+1:]
+      str1 = label[:pos_underscore]
+      str2 = label[pos_underscore+1:]
       if len(str1) > 1:
         str1 = r"{\rm " + str1.replace("_", r"\_") + r"}"
       if str2:
@@ -346,7 +380,7 @@ class Node:
       else:
         ret_val = str1
     else:
-      str1 = instr
+      str1 = label
       if len(str1) > 1:
         ret_val = r"{\rm " + str1 + r"}"
       else:
@@ -379,36 +413,6 @@ class Node:
     ret_str += f"{self.token}" if operOpt else f"{self.token.value}"
     return ret_str
 
-  def build_bussproof_rec(self):
-    LATEX_DICT = self.LATEX_DICT
-
-    if not self.children: 
-      if self.token.token_type == 'prop_letter':
-        label = self.identifier_to_latex(self.token.value)
-      else: # self.token.value could be 'bot'
-        label = LATEX_DICT[self.token.value]
-
-      the_str = r"\AxiomC" + r"{$" + label + "$}\n"
-    else: # self.token is a connective
-      token_str = LATEX_DICT[self.token.value]
-      if self.token.arity == 2:
-        kid1, kid2 = self.children
-        kid1_str = kid1.build_bussproof_rec()
-        kid2_str = kid2.build_bussproof_rec()
-        the_str = (kid1_str + kid2_str + r"\BinaryInfC" + r"{$" + 
-                   token_str + "$}\n")
-      else: # arity is 1
-        kid1 = self.children[0]
-        kid1_str = kid1.build_bussproof_rec()
-        the_str = kid1_str + r"\UnaryInfC" + r"{$" + token_str + "$}\n"
-
-    return the_str
-
-  def build_bussproof(self):
-    the_str = self.build_bussproof_rec()
-
-    return r"\begin{prooftree}" + "\n" + the_str + r"\end{prooftree}" + "\n"
-
   def build_infix_latex(self):
     if(self.type == 'term'):
       return self.build_infix_latex_term()
@@ -423,15 +427,10 @@ class Node:
   def build_infix_latex_formula(self):  
     LATEX_DICT = self.LATEX_DICT
 
-    if not self.children: 
+    if not self.children: # 'prop_letter' or 'conn_0ary'
       if self.token.token_type == 'prop_letter':
-        # All but the last occurrence of an underscore in an identifier
-        # are escaped with a backslash.
-        # Identifier string is romanized except the end substrings after 
-        # the last underscore, which are subscripted with _{}.
-
-        return self.identifier_to_latex(self.token.value)
-      else: # self.token.value could be 'bot'
+        return self.token2latex(self.token)
+      else: # self.token.value must be 'bot'
         return LATEX_DICT[self.token.value]
     else: # self.token is a connective
       ret_str = ''
@@ -485,8 +484,41 @@ class Node:
 
       return ret_str  
 
+  def build_bussproof_rec(self):
+    LATEX_DICT = self.LATEX_DICT
+
+    if not self.children: 
+      if self.token.token_type == 'prop_letter':
+        label = self.token2latex(self.token)
+      else: # self.token.value could be 'bot'
+        label = LATEX_DICT[self.token.value]
+
+      the_str = r"\AxiomC" + r"{$" + label + "$}\n"
+    else: # self.token is a connective
+      token_str = LATEX_DICT[self.token.value]
+      if self.token.arity == 2:
+        kid1, kid2 = self.children
+        kid1_str = kid1.build_bussproof_rec()
+        kid2_str = kid2.build_bussproof_rec()
+        the_str = (kid1_str + kid2_str + r"\BinaryInfC" + r"{$" + 
+                   token_str + "$}\n")
+      else: # arity is 1
+        kid1 = self.children[0]
+        kid1_str = kid1.build_bussproof_rec()
+        the_str = kid1_str + r"\UnaryInfC" + r"{$" + token_str + "$}\n"
+
+    return the_str
+
+  def build_bussproof(self):
+    the_str = self.build_bussproof_rec()
+
+    return r"\begin{prooftree}" + "\n" + the_str + r"\end{prooftree}" + "\n"
+
+
   def draw_tree(self, verbose=False):
     draw_ast(self, verbose)
+
+  # end of class Node
 
 class Parser:
   AND_TOKEN = Token('and')
@@ -787,7 +819,7 @@ def build_GNode(ast, xpos, ypos, ax, r):
   label = ast.token.value
 
   if ast.token.token_type == 'prop_letter':
-    label = Node.identifier_to_latex(label)
+    label = Node.token2latex(ast.token)
   else:
     label = LATEX_DICT[label]
   
