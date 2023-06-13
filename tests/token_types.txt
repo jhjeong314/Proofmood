@@ -1,0 +1,15 @@
+equality
+conn_arrow, conn_2ary, conn_1ary, conn_0ary
+quantifier
+pred_in
+pred_pre
+prop_letter
+
+
+numeral
+var
+const
+
+func_pre
+oper_in_1, oper_in_2, oper_in_3
+oper_pre, oper_post

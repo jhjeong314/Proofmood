@@ -206,7 +206,7 @@ class Node:
 
       return identifier_to_latex(self.token.value)
     else:
-      # self.token.token_type == func_symbol | op_unary_prefix | op_bin_1 | 
+      # self.token.token_type == func_symb | op_unary_prefix | op_bin_1 | 
       #                          op_bin_2 | op_bin_exp | op_postfix
       ret_str = ''
       if self.token.token_type == 'func_symb':
@@ -228,7 +228,8 @@ class Node:
             kid1, kid2 = self.children
             kid1_str = kid1.build_infix_latex()
             kid2_str = kid2.build_infix_latex()
-            if self.token.value == '-' and kid2.token.precedence == 1:
+            if ((self.token.value == '-' and kid2.token.precedence == 1) or
+                kid2.token.token_type == 'op_unary_prefix'):
               kid2_str = '(' + kid2_str + ')'
             # else pass
             ret_str += kid1_str + ' ' + self.token.value + ' ' + kid2_str
@@ -251,7 +252,7 @@ class Node:
             # <= instead of < because of right-associativity
             kid1_str = '(' + kid1_str + ')'
           if kid2.token.precedence < self.token.precedence:
-            pass # In a^(b+c), we don't need parentheses around b+c when it's latexed.
+            pass # In a^(b+c), we don't need parentheses around b+c when it's LaTeXed.
           ret_str += kid1_str + ' ' + self.token.value + ' ' + '{' + kid2_str + '}'
         else: # precedence==4. must be of type op_postfix
           kid1 = self.children[0]

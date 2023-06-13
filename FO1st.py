@@ -169,7 +169,10 @@ class Token:
       if self.isnumeral(value):
         self.token_type = 'numeral'
       elif value[0] in "uvw" + "xyz" + "ijk" + "lmn":
-        if len_s==1 or Token.isword(value[1:], "decimal"):
+        # we use concatenation to avoid the stupid cSpell warning
+        if (len_s==1 or 
+            (len_s >= 3 and value[1]=='_' 
+             and Token.isword(value[2:], "decimal"))):
           self.token_type = 'var'
         else:
           raise ValueError(f"'{value}' is invalid variable symbol (Token)")
@@ -220,7 +223,8 @@ class Token:
     #region cmt
     # Get arity of a function symbol (starts with [fgh]) 
     #   or a predicate symbol (starts with [A-Z]).
-    # If the last character is a decimal digit, it is the arity.
+    # If the last character is a decimal digit, and if it does not follow
+    # the underscore character, then it is the arity.
     # Otherwise, if the first character is [fgh], it is 1.
     #   Otherwise, it is 0. (prop_letter)
     # Arity 0 is not allowed for function symbols because it is
@@ -230,11 +234,17 @@ class Token:
     # Arities are not rendered because it can be inferred from
     #   the number of arguments.
     #endregion cmt
-    if not (d := value[-1]).isdecimal():
+    if (not (d := value[-1]).isdecimal()
+        or (len(value) >= 2 and value[-2] == '_')):
       if value[0] in "fgh":
-        return 1
+        return 1 # unary function
       elif value[0].isupper():
-        return 0
+        return 0 # propositional letter
+      else:
+        raise ValueError(
+          f"'{value}' is invalid in get_arity(), " + 
+            "function or predicate symbol expected"
+        )
     else:
       if value[0] in "fgh" and d=="0":
         raise ValueError(
@@ -279,7 +289,8 @@ def tokenizer(input_text):
           token1 = tokens.pop()
           token1.value += c
           tokens.append(Token(token1.value))
-        elif c in ("*", "+", "-", "#") and tokens[-1].value=="^":
+        elif (c in ("*", "+", "-", "#") and 
+              tokens  and tokens[-1].value=="^"):
           token1 = tokens.pop()
           token1.value += c
           tokens.append(Token(token1.value))
@@ -353,14 +364,16 @@ class Node:
   # ("token.value", r"\token.value") for the mapping.
   # Special care is needed for '^'. See the build_infix_latex_formula() 
   #   method below.
-  # For use-defined tokens, use the following static method token2latex().
+  # For user-defined tokens, use the following static method ident2latex().
   #endregion
 
   @staticmethod
-  def token2latex(token: Token) -> str:
+  def ident2latex(token: Token) -> str:
     #region Comment
-    # All but the last occurrence of an underscore in an identifier,
-    # i.e., the token.value, are escaped with a backslash.
+    # Identifier means the token.value when token.token_type is "var",
+    # "const", "numeral", "func_pre", "pred_pre".
+    # All but the last occurrence of an underscore in the string
+    # are escaped with a backslash.
     # Identifier string is romanized except the end substrings after 
     # the last underscore, which are subscripted with _{}.
     # If the last character is a decimal and the previous char is not
@@ -369,17 +382,23 @@ class Node:
     #endregion
     label = token.value
     pos_underscore = label.rfind('_')
+    if (label[-1].isdecimal() and 
+        token.token_type in ("func_pre", "pred_pre") and
+        (pos_underscore < 0 or pos_underscore != len(label)-2)):
+      label = label[:-1] # chop-off the last character
     
-    if pos_underscore >= 0:
+    if pos_underscore >= 0: # underscore exists in the identifier
       str1 = label[:pos_underscore]
       str2 = label[pos_underscore+1:]
       if len(str1) > 1:
         str1 = r"{\rm " + str1.replace("_", r"\_") + r"}"
       if str2:
         ret_val = str1 + r"_{" + str2 + r"}"
+        # if there is no character after the last underscore, 
+        # the last underscore is not rendered
       else:
         ret_val = str1
-    else:
+    else: # no underscore in the identifier
       str1 = label
       if len(str1) > 1:
         ret_val = r"{\rm " + str1 + r"}"
@@ -401,7 +420,7 @@ class Node:
     ret_str = f"{self.token}" if operOpt else f"{self.token.value}"
     if self.children:
       ret_str += ' '
-    ret_str += ' '.join(child.build_polish_notation(operOpt) 
+      ret_str += ' '.join(child.build_polish_notation(operOpt) 
                         for child in self.children)
     return ret_str
   
@@ -410,7 +429,9 @@ class Node:
     if self.children:
       ret_str += ' '.join(child.build_RPN(operOpt) 
                           for child in self.children) + ' '
+      
     ret_str += f"{self.token}" if operOpt else f"{self.token.value}"
+    
     return ret_str
 
   def build_infix_latex(self):
@@ -421,15 +442,46 @@ class Node:
     
   def build_infix_latex_term(self):
     LATEX_DICT = self.LATEX_DICT
+    if not self.children: # leaf node ::= variable | const | numeral
+      return self.ident2latex(self.token)
+    else: # non-leaf node
+      # token_type ::= func_pre | oper_in_1 | oper_in_2 | oper_in_3 |
+      #                oper_pre | oper_post 
+      ret_str = ''
+      if self.token.token_type == 'func_pre':
+        label = self.ident2latex(self.token)
+        args = ', '.join(kid.build_infix_latex() for kid in self.children)
+        ret_str += label + '(' + args + ')'
+      else: # token is an operator with various arities and precedences
+        if self.token.precedence == 1: 
+          # oper_pre(unary) or oper_in_1(binary, +, -, cap, cup, oplus)
+          if self.token.token_type == 'oper_pre':
+            kid1 = self.children[0]
+            kid1_str = kid1.build_infix_latex()
+            if kid1.token.precedence == 1:
+              kid1_str = '(' + kid1_str + ')'
+            # else pass
+            ret_str += self.token.value + kid1_str
+          else: # oper_in_1
+            kid1, kid2 = self.children
+            kid1_str = kid1.build_infix_latex()
+            kid2_str = kid2.build_infix_latex()
+            if ((self.token.value == '-' and kid2.token.precedence == 1) or
+                kid2.token.token_type == 'oper_pre'):
+              kid2_str = '(' + kid2_str + ')'
+            # else pass
+            ret_str += kid1_str + ' ' + self.token.value + ' ' + kid2_str
+        elif self.token.precedence == 2: # oper_in_2
+          pass
 
-    pass
+      return ret_str
 
   def build_infix_latex_formula(self):  
     LATEX_DICT = self.LATEX_DICT
 
     if not self.children: # 'prop_letter' or 'conn_0ary'
       if self.token.token_type == 'prop_letter':
-        return self.token2latex(self.token)
+        return self.ident2latex(self.token)
       else: # self.token.value must be 'bot'
         return LATEX_DICT[self.token.value]
     else: # self.token is a connective
@@ -489,7 +541,7 @@ class Node:
 
     if not self.children: 
       if self.token.token_type == 'prop_letter':
-        label = self.token2latex(self.token)
+        label = self.ident2latex(self.token)
       else: # self.token.value could be 'bot'
         label = LATEX_DICT[self.token.value]
 
@@ -690,7 +742,7 @@ class Parser:
   def nterm1(self) -> Node:
     token = self.current_token
     if token is None or not self.check_token_value('-'):      
-       node = self.term()
+       node = self.term1()
     else:
       token.token_type = 'oper_pre'
       self.advance()
@@ -819,7 +871,7 @@ def build_GNode(ast, xpos, ypos, ax, r):
   label = ast.token.value
 
   if ast.token.token_type == 'prop_letter':
-    label = Node.token2latex(ast.token)
+    label = Node.ident2latex(ast.token)
   else:
     label = LATEX_DICT[label]
   
