@@ -582,6 +582,12 @@ class Node:
           elif (kid2.token.token_type == 'conn_2ary' and
                 self.token.value != kid2.token.value):
               kid2_str = f"({kid2_str})"
+          # x < y = z case
+          if self.token.value == 'and':
+            if (v_str := self.seq_infix()):
+              return v_str
+            else:
+              pass
         ret_str += kid1_str + token_str + kid2_str
       elif self.token.token_type == 'conn_1ary': # negation
         token_str = LATEX_DICT[self.token.value] + '\, ' 
@@ -602,6 +608,31 @@ class Node:
           kid11_str = f"({kid11_str})"
         ret_str += token_str + kid1_str + '\, ' + kid11_str
       return ret_str  
+
+  def seq_infix(self):
+    # called iff self.token.value == 'and'
+    kid1, kid2 = self.children
+    if kid2.token.token_type in ('pred_in', 'equality'):
+      if kid1.token.token_type in ('pred_in', 'equality'):
+        if kid1.children[1] == kid2.children[0]:
+          kid1_str = kid1.build_infix_latex()
+          kid2_token_str = kid2.token2latex(kid2.token)
+          kid22_str = kid2.children[1].build_infix_latex()
+          return ' '.join([kid1_str, kid2_token_str, kid22_str])
+        else:
+          return False
+      elif kid1.token.value == 'and':
+        if (kid1.children[1].children[1] == kid2.children[0] and
+            (kid1_str := kid1.seq_infix())):
+          kid2_token_str = kid2.token2latex(kid2.token)
+          kid22_str = kid2.children[1].build_infix_latex()
+          return ' '.join([kid1_str, kid2_token_str, kid22_str])
+        else:
+          return False
+      else:
+        return False
+    else:
+      return False
 
   def build_bussproof_rec(self):
     LATEX_DICT = self.LATEX_DICT
@@ -746,12 +777,14 @@ class Parser:
       right_node = self.comp_fmla2() # recursive call for right-assoc
       node = Node(token_q, [Node(token_v, [right_node])])
     else:
-      # atomic formula (not identifier: i.e, the atomic term)
+      # atomic formula (not identifier or equivalently, not the atomic term)
+      # formulas like a < b = c are considered as atomic formulas
       node = self.atom() 
 
     return node
         
   def atom(self) -> Node:  # type: ignore # ignore Pylance error
+    # formulas like a < b = c are considered as atomic formulas
     if self.current_token is not None:
       token = self.current_token
       if self.check_token_type('prop_letter'):
@@ -798,10 +831,10 @@ class Parser:
           right_node = self.term()
           if saved_node is None:
             node = Node(token, [node, right_node])
-            saved_node = right_node
           else:
             new_node = Node(token, [saved_node, right_node])
             node = Node(self.AND_TOKEN, [node, new_node])
+          saved_node = right_node
         return node
     else:
       raise SyntaxError("Unexpected end of input, in atom()")
