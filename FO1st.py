@@ -79,8 +79,10 @@ class Token:
   OPER_POST = [ "!", "'", "^#", "^+", "^-", "^*", "^o", "^inv" ]
   OPER_IN_1 = [ "+", "-", "cap", "cup", "oplus" ]
   OPER_IN_2 = [ "*", "/", "%", "times", "div", "otimes", "cdot" ]
+  OPER_IN_2N = [ "/", "%", "div" ]
   OPER_IN_3 = [ "^" ]
-  PRED_IN = [ "!=", "<", "<=", ">", ">=", "in", "nin", "subseteq",
+  PRED_IN = [ "!=", "<", "<=", ">", ">=", "nless", "nleq", "ngtr", "ngeq",
+              "divides", "in", "nin", "subseteq",
               "nsubseteq", "subsetneqq", "supseteq", "nsupseteq",
               "supsetneqq", "divides", "ndivides", "sim", "simeq",
               "cong", "equiv", "approx" ]
@@ -151,8 +153,9 @@ class Token:
       self.token_type = 'oper_in_3'
       self.arity = 2
       self.precedence = 3
-    elif value in OPER_PRE:
-      self.token_type = 'oper_pre' # unary '-'
+    elif value in OPER_PRE: # this won't be used
+      # 'oper_pre' type is set in the parser
+      self.token_type = 'oper_pre' # unary '-', ..
       self.arity = 1
       self.precedence = 1
     elif value in OPER_POST:
@@ -168,17 +171,20 @@ class Token:
       len_s = len(value)
       if self.isnumeral(value):
         self.token_type = 'numeral'
+        self.precedence = 9
       elif value[0] in "uvw" + "xyz" + "ijk" + "lmn":
         # we use concatenation to avoid the stupid cSpell warning
         if (len_s==1 or 
             (len_s >= 3 and value[1]=='_' 
              and Token.isword(value[2:], "decimal"))):
           self.token_type = 'var'
+          self.precedence = 9
         else:
           raise ValueError(f"'{value}' is invalid variable symbol (Token)")
       elif value[0] in "abcde" :
         if len_s==1 or Token.isword(value[1:]):
           self.token_type = 'const'
+          self.precedence = 9
         else:
           raise ValueError(f"'{value}' is invalid constant symbol (Token)")        
       elif value[0] in "fgh":
@@ -329,11 +335,11 @@ def print_in_chunk(li, chunk_size=5): # li is any iterable
 # <formula> ::= { <comp_fmla1> "imp" } <comp_fmla1> | 
 #                 <comp_fmla1> { ( "iff" | "xor") <comp_fmla1> }
 # <comp_fmla1> ::= <comp_fmla2> { ("and" | "or") <comp_fmla2> }
-# <comp_fmla2> ::= { ("not" | <quantifier>) } '(' <formula> ')' | 
-#                  { ("not" | <quantifier>) } <atom>
+# <comp_fmla2> ::= { ("not" | <determiner>) } '(' <formula> ')' | 
+#                  { ("not" | <determiner>) } <atom> | "bot"
+# <determiner> ::= <quantifier> <var>
 # <quantifier> ::= "forall" | "exists"
-# <atom> ::= "bot" | <prop_letter> | 
-#            <pred_pre> "(" <term> {',' <term>} ")" |
+# <atom> ::= <prop_letter> | <pred_pre> "(" <term> {',' <term>} ")" |
 #            <term> <pred_in> <term>
 
 # # The "bot" connective is typically classified as a compound formula, 
@@ -357,8 +363,11 @@ class Node:
   LATEX_DICT = dict(
     [("not", r"\neg"), ("and", r"\wedge"), ("or", r"\vee"),
     ("imp", r"\rightarrow"), ("iff", r"\leftrightarrow"),
-    ("xor", r"\nleftrightarrow"), ("bot", r"\bot"), ("emptyset", r"\varnothing"),
-    ("^o", r"^{\circ}"), ("^inv", r"^{-1}")])
+    ("xor", r"\nleftrightarrow"), ("nin", r"\not\in"), ("bot", r"\bot"), 
+    ("emptyset", r"\varnothing"), ("^o", r"^{\circ}"), ("^inv", r"^{-1}"), 
+    ("^#", r"^\#"), ("%", r"\%"), ("<=", r"\le"), (">=", r"\ge"), 
+    ("divides", r"\,\vert\,"), ("ndivides", r"\;\vert\mskip-14mu\not\;\;"),
+    ("forall", r"\forall"), ("exists", r"\exists")])
   #region Comment
   # Other than the above and '^', for all reserved tokens, just use 
   # ("token.value", r"\token.value") for the mapping.
@@ -367,6 +376,16 @@ class Node:
   # For user-defined tokens, use the following static method ident2latex().
   #endregion
 
+  @staticmethod
+  def token2latex(token: Token) -> str:
+    label = token.value
+    if (latex_str := Node.LATEX_DICT.get(label)):
+      return latex_str
+    elif label.isalnum():
+        return f"\\{label}"
+    else:
+      return label
+    
   @staticmethod
   def ident2latex(token: Token) -> str:
     #region Comment
@@ -461,39 +480,82 @@ class Node:
             if kid1.token.precedence == 1:
               kid1_str = '(' + kid1_str + ')'
             # else pass
-            ret_str += self.token.value + kid1_str
+            ret_str += self.token2latex(self.token) + kid1_str
           else: # oper_in_1
             kid1, kid2 = self.children
             kid1_str = kid1.build_infix_latex()
             kid2_str = kid2.build_infix_latex()
-            if ((self.token.value == '-' and kid2.token.precedence == 1) or
+            if ((self.token.value in Token.OPER_PRE and kid2.token.precedence == 1) or
                 kid2.token.token_type == 'oper_pre'):
               kid2_str = '(' + kid2_str + ')'
             # else pass
-            ret_str += kid1_str + ' ' + self.token.value + ' ' + kid2_str
-        elif self.token.precedence == 2: # oper_in_2
-          pass
-
+            ret_str += kid1_str + ' ' + self.token2latex(self.token) + ' ' + kid2_str
+        elif self.token.precedence == 2: # oper_in_2(binary, *, /, %, ...)
+          kid1, kid2 = self.children
+          kid1_str = kid1.build_infix_latex()
+          kid2_str = kid2.build_infix_latex()
+          # determine if parentheses are needed
+          if (kid2.token.precedence < self.token.precedence or
+              # '/', '%', 'div' are non-associative
+              (kid2.token.precedence == self.token.precedence and 
+               self.token.value in Token.OPER_IN_2N)): 
+            kid2_str = '(' + kid2_str + ')'
+          if kid1.token.precedence < self.token.precedence:
+            kid1_str = '(' + kid1_str + ')'
+          ret_str += kid1_str + ' ' + self.token2latex(self.token) + \
+                     ' ' + kid2_str
+        elif self.token.precedence == 3: # oper_in_3(binary, ^ exponentiation)
+          kid1, kid2 = self.children
+          kid1_str = kid1.build_infix_latex()
+          kid2_str = kid2.build_infix_latex()
+          # determine if parentheses are needed
+          if kid1.token.precedence <= 4:
+            # '^' is right-associative, and we want parentheses in (a')^2
+            kid1_str = '(' + kid1_str + ')'
+          if kid2.token.precedence < self.token.precedence:
+            pass # In a^(b+c), we don't need parentheses around b+c
+                 # when it is LaTeXed. 
+          ret_str += kid1_str + '^' + '{' + kid2_str + '}'
+        else: # precedence = 4. Must be of type OPER_POST.
+          kid1 = self.children[0]
+          kid1_str = kid1.build_infix_latex()
+          if kid1.token.precedence <= self.token.precedence: 
+            # true unless kid1 is an atomic term
+            kid1_str = '(' + kid1_str + ')'
+          ret_str += kid1_str + self.token2latex(self.token)
       return ret_str
 
   def build_infix_latex_formula(self):  
     LATEX_DICT = self.LATEX_DICT
 
+    # atomic formulas and bot
     if not self.children: # 'prop_letter' or 'conn_0ary'
       if self.token.token_type == 'prop_letter':
         return self.ident2latex(self.token)
       else: # self.token.value must be 'bot'
         return LATEX_DICT[self.token.value]
-    else: # self.token is a connective
-      ret_str = ''
-      if self.token.arity == 2:
-        token_str = ' ' + LATEX_DICT[self.token.value] + ' '
+    elif self.token.token_type in Token.FMLA_TOKENS: # 'pred_pre', 'pred_in', 'equality'
+      if self.token.token_type == 'pred_pre':
+        label = self.ident2latex(self.token)
+        args = ', '.join(kid.build_infix_latex() for kid in self.children)
+        return label + '(' + args + ')'
+      else: # 'pred_in' or 'equality'
         kid1, kid2 = self.children
         kid1_str = kid1.build_infix_latex()
         kid2_str = kid2.build_infix_latex()
-        if self.token.precedence == 1: 
+        return kid1_str + ' ' + self.token2latex(self.token) + ' ' + kid2_str
+    # compound formulas except bot
+    # i.e., binary and unary connectives and quantifiers
+    else: 
+      ret_str = ''
+      if self.token.arity == 2:
+        token_str = '\: ' + LATEX_DICT[self.token.value] + '\: '
+        kid1, kid2 = self.children
+        kid1_str = kid1.build_infix_latex()
+        kid2_str = kid2.build_infix_latex()
+        if self.token.token_type == 'conn_arrow': # 'imp', 'iff', 'xor'
           # determine whether we need parentheses around kid1
-          if kid1.token.precedence == 1:
+          if kid1.token.token_type == 'conn_arrow':
             if self.token.value != kid1.token.value:
               kid1_str = f"({kid1_str})"
             else:
@@ -502,38 +564,43 @@ class Node:
               else:
                 pass # iff and xor are associative
           # determine whether we need parentheses around kid2
-          if kid2.token.precedence == 1:
+          if kid2.token.token_type == 'conn_arrow':
             if self.token.value != kid2.token.value:
               kid2_str = f"({kid2_str})"
             else:
               pass # even 'imp' is right-associative
         else: # 'and', 'or' (precedence == 2)
-          if(kid1.token.precedence > self.token.precedence):
-            pass
           # determine whether we need parentheses around kid1
-          elif kid1.token.precedence < self.token.precedence:
+          if kid1.token.token_type == 'conn_arrow':
             kid1_str = f"({kid1_str})"
-          elif self.token.value != kid1.token.value:
-              kid1_str = f"({kid1_str})"
+          elif (kid1.token.token_type == 'conn_2ary' and 
+                self.token.value != kid1.token.value):
+            kid1_str = f"({kid1_str})"
           # determine whether we need parentheses around kid2
-          if kid2.token.precedence > self.token.precedence:
-            pass
-          elif kid2.token.precedence < self.token.precedence:
+          if kid2.token.token_type == 'conn_arrow':
             kid2_str = f"({kid2_str})"
-          elif self.token.value != kid2.token.value:
+          elif (kid2.token.token_type == 'conn_2ary' and
+                self.token.value != kid2.token.value):
               kid2_str = f"({kid2_str})"
         ret_str += kid1_str + token_str + kid2_str
-      else: # arity is 1
-        token_str = LATEX_DICT[self.token.value] + ' ' 
+      elif self.token.token_type == 'conn_1ary': # negation
+        token_str = LATEX_DICT[self.token.value] + '\, ' 
         kid1 = self.children[0]
         kid1_str = kid1.build_infix_latex()
         # determine whether we need parentheses around kid1
-        if kid1.token.precedence < self.token.precedence:
+        if kid1.token.token_type in ('conn_2ary', 'conn_arrow', 'pred_in', 'equality'):
           kid1_str = f"({kid1_str})"
-        else:
-          pass
         ret_str += token_str + kid1_str
-
+      else: # quantifier
+        token_str = LATEX_DICT[self.token.value] + ' '
+        kid1 = self.children[0] # a variable for determiner
+        kid1_str = self.ident2latex(kid1.token)
+        kid11 = kid1.children[0]
+        kid11_str = kid11.build_infix_latex()
+        # determine whether we need parentheses around kid11
+        if kid11.token.token_type in ('pred_in', 'equality'):
+          kid11_str = f"({kid11_str})"
+        ret_str += token_str + kid1_str + '\, ' + kid11_str
       return ret_str  
 
   def build_bussproof_rec(self):
@@ -658,22 +725,36 @@ class Parser:
         self.advance()
       else:
         raise SyntaxError(f"Expected ')' at {self.index}," +
-                f" in factor(), but {self.current_token} is given.")
-    elif self.check_token_type(('conn_1ary','quantifier')): 
-        # 'not' or 'forall' or 'exists'
+                f" in comp_fmla2(), but {self.current_token} is given.")
+    elif self.check_token_type('conn_0ary'):
+      token = self.current_token
+      self.advance()
+      node = Node(token)
+    elif self.check_token_type('conn_1ary'): # 'not' 
       token = self.current_token 
       self.advance()
       right_node = self.comp_fmla2() # recursive call for right-assoc
       node = Node(token, [right_node])
+    elif self.check_token_type('quantifier'):
+      token_q = self.current_token
+      self.advance()
+      if not self.check_token_type('var'):
+        raise SyntaxError(f"Expected a variable at {self.index}," +
+                f" in comp_fmla2(), but {self.current_token} is given.")
+      token_v = self.current_token
+      self.advance()
+      right_node = self.comp_fmla2() # recursive call for right-assoc
+      node = Node(token_q, [Node(token_v, [right_node])])
     else:
-      node = self.atom() # atomic formula (not identifier, the atomic term)
+      # atomic formula (not identifier: i.e, the atomic term)
+      node = self.atom() 
 
     return node
         
   def atom(self) -> Node:  # type: ignore # ignore Pylance error
     if self.current_token is not None:
       token = self.current_token
-      if self.check_token_type(('conn_0ary', 'prop_letter')):
+      if self.check_token_type('prop_letter'):
         # atomic formula case
         self.advance()
         return Node(token)
@@ -727,7 +808,7 @@ class Parser:
       
 
   def term(self) -> Node:
-    if self.check_token_value('-'):
+    if self.current_token.value in Token.OPER_PRE:
       node = self.nterm1() 
     else:
       node = self.term1()
@@ -741,7 +822,7 @@ class Parser:
   
   def nterm1(self) -> Node:
     token = self.current_token
-    if token is None or not self.check_token_value('-'):      
+    if token is None or not self.current_token.value in Token.OPER_PRE:      
        node = self.term1()
     else:
       token.token_type = 'oper_pre'

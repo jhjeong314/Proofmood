@@ -11,6 +11,10 @@
     "isnumeral",
     "leftrightarrow",
     "ndivides",
+    "ngeq",
+    "ngtr",
+    "nleq",
+    "nless",
     "nsubseteq",
     "nsupseteq",
     "nterm",
@@ -25,7 +29,8 @@
     "supseteq",
     "supsetneqq",
     "symb",
-    "Tbox"
+    "Tbox",
+    "varnothing"
   ],
   "python.languageServer": "Pylance",
   "python.analysis.typeCheckingMode": "basic",
