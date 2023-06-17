@@ -92,7 +92,8 @@ class Token:
   FMLA_TOKENS = ("pred_pre", "pred_in", "equality", "prop_letter", 
     'conn_0ary') # an expression is a formula iff it has a token in FMLA_TOKENS
   FMLA_ROOTS = FMLA_TOKENS + ("conn_1ary", "conn_2ary", "conn_arrow", 
-    "quantifier") # a parsed node is a formula iff it has a token in FMLA_ROOTS
+    "quantifier", "var_determiner") 
+    # a parsed node is a formula iff it has a token in FMLA_ROOTS
 
   def __init__(self, value):
     CONSTS = self.CONSTS
@@ -110,6 +111,7 @@ class Token:
     # reserved words (equality, connectives, quantifiers, parentheses, comma)
     if value == "=":
       self.token_type = 'equality'
+      self.arity = 2
     elif value in ("imp", "iff", "xor"):
       self.token_type = 'conn_arrow'
       self.arity = 2
@@ -378,6 +380,7 @@ class Node:
 
   @staticmethod
   def token2latex(token: Token) -> str:
+    # for oper_*, pred_in (declared in Token class)
     label = token.value
     if (latex_str := Node.LATEX_DICT.get(label)):
       return latex_str
@@ -389,6 +392,7 @@ class Node:
   @staticmethod
   def ident2latex(token: Token) -> str:
     #region Comment
+    # for const, var, func_pre, pred_pre, prop_letter, numeral
     # Identifier means the token.value when token.token_type is "var",
     # "const", "numeral", "func_pre", "pred_pre".
     # All but the last occurrence of an underscore in the string
@@ -419,7 +423,7 @@ class Node:
         ret_val = str1
     else: # no underscore in the identifier
       str1 = label
-      if len(str1) > 1:
+      if len(str1) > 1 and not str1.isdecimal():
         ret_val = r"{\rm " + str1 + r"}"
       else:
         ret_val = str1
@@ -454,7 +458,7 @@ class Node:
     return ret_str
 
   def build_infix_latex(self):
-    if(self.type == 'term'):
+    if self.type == 'term':
       return self.build_infix_latex_term()
     else: # self.type == 'formula'
       return self.build_infix_latex_formula()
@@ -528,13 +532,16 @@ class Node:
   def build_infix_latex_formula(self):  
     LATEX_DICT = self.LATEX_DICT
 
-    # atomic formulas and bot
+    # 1. atomic formulas and bot
     if not self.children: # 'prop_letter' or 'conn_0ary'
+      # 1.1 terminal nodes
       if self.token.token_type == 'prop_letter':
         return self.ident2latex(self.token)
       else: # self.token.value must be 'bot'
         return LATEX_DICT[self.token.value]
-    elif self.token.token_type in Token.FMLA_TOKENS: # 'pred_pre', 'pred_in', 'equality'
+    elif self.token.token_type in Token.FMLA_TOKENS: 
+      # 'pred_pre', 'pred_in', 'equality'
+      # 1.2 internal nodes
       if self.token.token_type == 'pred_pre':
         label = self.ident2latex(self.token)
         args = ', '.join(kid.build_infix_latex() for kid in self.children)
@@ -544,11 +551,11 @@ class Node:
         kid1_str = kid1.build_infix_latex()
         kid2_str = kid2.build_infix_latex()
         return kid1_str + ' ' + self.token2latex(self.token) + ' ' + kid2_str
-    # compound formulas except bot
-    # i.e., binary and unary connectives and quantifiers
+    # 2. compound formulas except bot--i.e., connectives and quantifiers
     else: 
       ret_str = ''
       if self.token.arity == 2:
+        # 2.1 binary connectives
         token_str = '\: ' + LATEX_DICT[self.token.value] + '\: '
         kid1, kid2 = self.children
         kid1_str = kid1.build_infix_latex()
@@ -589,7 +596,8 @@ class Node:
             else:
               pass
         ret_str += kid1_str + token_str + kid2_str
-      elif self.token.token_type == 'conn_1ary': # negation
+      elif self.token.token_type == 'conn_1ary': 
+        # 2.2 unary connectives (actually, negation only)
         token_str = LATEX_DICT[self.token.value] + '\, ' 
         kid1 = self.children[0]
         kid1_str = kid1.build_infix_latex()
@@ -597,7 +605,8 @@ class Node:
         if kid1.token.token_type in ('conn_2ary', 'conn_arrow', 'pred_in', 'equality'):
           kid1_str = f"({kid1_str})"
         ret_str += token_str + kid1_str
-      else: # quantifier
+      else:
+         # 2.3 quantifier
         token_str = LATEX_DICT[self.token.value] + ' '
         kid1 = self.children[0] # a variable for determiner
         kid1_str = self.ident2latex(kid1.token)
@@ -610,7 +619,9 @@ class Node:
       return ret_str  
 
   def seq_infix(self):
-    # called iff self.token.value == 'and'
+    # sequence of terms connected by infix operators: i.e., x < y = z, which
+    #   is parsed as x < y and y = z.
+    # This method is called iff self.token.value == 'and'.
     kid1, kid2 = self.children
     if kid2.token.token_type in ('pred_in', 'equality'):
       if kid1.token.token_type in ('pred_in', 'equality'):
@@ -634,36 +645,70 @@ class Node:
     else:
       return False
 
+  #region comment
+  # bussproof tree has the following structure:
+  # 1. terminal node: \AxiomC{..}
+  #    terms, prop letters, and bot
+  # 2. non-terminal node: \UnaryInfC{..}, \BinaryInfC{..}, \TrinaryInfC{..}
+  #    predicate symbol(prefix and infix), equality
+  #      prefix predicate's arity is at most 3
+  #    connectives(unary and binary)
+  #    quantifier + var_determiner
+  #endregion
+  def build_bussproof(self): # wrapper of build_bussproof_rec()
+    the_str = self.build_bussproof_rec()
+    return r"\begin{prooftree}" + "\n" + the_str + r"\end{prooftree}" + "\n"
+
   def build_bussproof_rec(self):
     LATEX_DICT = self.LATEX_DICT
 
-    if not self.children: 
+    if self.type == 'term':
+      # terminal node. use \AxiomC{..}
+      label = self.build_infix_latex_term()
+      the_str = r"\AxiomC" + r"{$" + label + "$}\n"
+    # self.type == 'formula'
+    elif not self.children: 
+      # terminal node. use \AxiomC{..}
       if self.token.token_type == 'prop_letter':
         label = self.ident2latex(self.token)
-      else: # self.token.value could be 'bot'
+      else: # self.token.value must be 'bot'
         label = LATEX_DICT[self.token.value]
-
       the_str = r"\AxiomC" + r"{$" + label + "$}\n"
-    else: # self.token is a connective
-      token_str = LATEX_DICT[self.token.value]
-      if self.token.arity == 2:
+    else: # pred_pre, pred_in, equality, 
+          # conn_1ary, conn_2ary, conn_arrow, quantifier
+      label = (self.ident2latex(self.token) 
+               if self.token.token_type == 'pred_pre' 
+               else self.token2latex(self.token))
+      arity = self.token.arity # must be 1, 2, or 3
+      if arity == 1: # not, forall, exists
+        if self.token.token_type in ('conn_1ary', 'pred_pre'):
+          kid1 = self.children[0]
+          kid1_str = kid1.build_bussproof_rec()
+          the_str = kid1_str + r"\UnaryInfC" + r"{$" + label + "$}\n"
+        else: # quantifier
+          kid1 = self.children[0] # a variable for determiner
+          kid1_str = self.ident2latex(kid1.token)
+          kid11 = kid1.children[0]
+          kid11_str = kid11.build_bussproof_rec()
+          the_str = (kid11_str + r"\UnaryInfC" + r"{$" + label + ' ' +
+                     kid1_str + "$}\n")
+      elif arity == 2:
         kid1, kid2 = self.children
         kid1_str = kid1.build_bussproof_rec()
         kid2_str = kid2.build_bussproof_rec()
-        the_str = (kid1_str + kid2_str + r"\BinaryInfC" + r"{$" + 
-                   token_str + "$}\n")
-      else: # arity is 1
-        kid1 = self.children[0]
+        the_str = (kid1_str + kid2_str + r"\BinaryInfC" + r"{$" +
+                    label + "$}\n")
+      elif arity == 3:
+        kid1, kid2, kid3 = self.children
         kid1_str = kid1.build_bussproof_rec()
-        the_str = kid1_str + r"\UnaryInfC" + r"{$" + token_str + "$}\n"
+        kid2_str = kid2.build_bussproof_rec()
+        kid3_str = kid3.build_bussproof_rec()
+        the_str = (kid1_str + kid2_str + kid3_str + r"\TrinaryInfC" + r"{$" +
+                    label + "$}\n")
+      else:
+        raise ValueError(f"arity of predicate symbol cannot be {arity}")
 
     return the_str
-
-  def build_bussproof(self):
-    the_str = self.build_bussproof_rec()
-
-    return r"\begin{prooftree}" + "\n" + the_str + r"\end{prooftree}" + "\n"
-
 
   def draw_tree(self, verbose=False):
     draw_ast(self, verbose)
@@ -769,10 +814,12 @@ class Parser:
     elif self.check_token_type('quantifier'):
       token_q = self.current_token
       self.advance()
-      if not self.check_token_type('var'):
+      token_v = self.current_token
+      if token_v is None or token_v.token_type != 'var':
         raise SyntaxError(f"Expected a variable at {self.index}," +
                 f" in comp_fmla2(), but {self.current_token} is given.")
-      token_v = self.current_token
+      token_v.token_type = 'var_determiner'
+      token_v.arity = 1
       self.advance()
       right_node = self.comp_fmla2() # recursive call for right-assoc
       node = Node(token_q, [Node(token_v, [right_node])])
