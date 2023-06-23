@@ -1028,10 +1028,10 @@ def draw_ast(ast: Node, verbose=False):
   plt.rcParams["figure.dpi"] = 300 # default 100
   plt.rcParams["text.usetex"] = True 
     # without this, some LaTeX commands do not work
-  fig, ax = plt.subplots(1, 1, figsize=(1.5, 1))
+  fig, ax = plt.subplots(1, 1, figsize=(3, 1.5))
   ax.set(aspect='equal')
   ax.set_xlim(0, 3) 
-  ax.set_ylim(0, 2) 
+  ax.set_ylim(0, 1.5) 
   ax.axis('off')
   center_x = ax.get_xlim()[1] / 2
   center_y = ax.get_ylim()[1] / 2
@@ -1053,12 +1053,12 @@ def build_GNode(ast: Node, xpos, ypos, ax, r):
     if ast.token.token_type == 'quantifier':
       kid1 = ast.children[0] # a variable for the determiner
       kidd11 = kid1.children[0] # a formula for the determiner's scope
-      children = [build_GNode(kidd11, xpos, ypos, ax, r)]
+      children = [build_GNode(kidd11, xpos, ypos, ax, r)] # GNode children
     else:
       children = [build_GNode(kid, xpos, ypos, ax, r) 
                 for kid in ast.children] # GNode children
   else:
-    children = [] 
+    children = []  # GNode children
 
   if ast.type == 'formula':
     if ast.token.token_type in ('pred_pre', 'prop_letter'):
@@ -1100,13 +1100,13 @@ class Tbox: # text object together with its position and size
             f"w = {self.width:.3f}, h = {self.height:.3f}")
     
 class GNode: # graph node
-  def __init__(self, txt, ax, r, unit_len = 0.12, kx=3, ky=1, 
-               overhang=0.14, children=None):
+  def __init__(self, txt, ax, r, unit_len = 0.09, kx=2.2, ky=1, 
+               overhang=0.07, children=None):
     # txt = ax.text(pos_x, pos_y, string, ..) is a text object
     # r is a renderer
     # dx is the horizontal distances between the children
     # dy is the vertical distance between the root and the children    
-    # children is a list of Node objects    
+    # children is a list of GNode objects    
     # Root's position is (0, 0). When rendering, we will shift the
     # node's center to the center of the figure.
     # The root and each child's position is relative to the center
@@ -1115,7 +1115,7 @@ class GNode: # graph node
     self.parent = None # This changes later iff 
                        # self is not the real(one and only) root.
     self.x = self.y = 0
-    self.root = tbox = Tbox(txt, ax, r)
+    self.root = Tbox(txt, ax, r)
     self.children = None
     self.unit_height = unit_len
     self.overhang = overhang
@@ -1128,7 +1128,12 @@ class GNode: # graph node
     # (self.root.x, self.root.y) has meaning iff self.parent is None.
     # It is the position (x, y) given when the text object was created
     # by ax.text(x, y, ...) 
-    # Normally it is (center_x, center_y) of the axis.
+    # Normally (actually, always) it is (center_x, center_y) of the axis.
+    # The width of a GNode is a tricky concept.
+    # Each GNode has 2 widths: self.width and self.root.width.
+    # self.root.width is the width of the text object and automatically 
+    # computed by matplotlib. self.width is the width of the GNode tree 
+    # and computed by the code below.
 
     dx = kx * unit_len
     dy = ky * unit_len
@@ -1136,39 +1141,49 @@ class GNode: # graph node
       # height of each node (considered as a rectangle)
     if children:
       self.children = children
-      # Compute the total width of the children.
-      tot_width = sum([kid.width for kid in children]) + (len(children)-1)*dx
-      self.width = tot_width
+      n_kid = len(children)
+
+      # Compute the total width of the node.
+      kids_tot_width = sum([kid.width for kid in children]) + (n_kid-1)*dx
+      self.width = max(kids_tot_width, self.root.width)
+
       # Compute the total height of the node
       max_height = max([kid.height for kid in children])
       tot_height = max_height + dy + unit_height
       self.height = tot_height
+
       # Get the position of each kid's root relative to the root of self.
-      # dlrkids = distance between the leftmost kid's root and the 
-      # rightmost kid's root
-      #    = tot_width - (children[0].width + children[-1].width)/2
-      # xvec = [-dlrkids/2, += children[0].width/2 + 
-      #   children[1].width/2 + dx, += ...]
-      # xvec[-1] must be dlrkids/2
-      # y = dy
-      wl = children[0].width # width of the leftmost child
-      wr = children[-1].width # width of the rightmost child
-      dlrkids = tot_width - (wl + wr)/2
+      # xpos is relatively hard to obtain. ypos is easy.
+  
+      # Compute the kids_width, which is used to compute 
+      #   each kid's root's xpos.
+      if n_kid == 1:
+        kids_width = children[0].root.width
+      else:
+        kids_width0 = (children[0].root.width/2 + children[0].width/2 + dx + 
+                       children[-1].width/2 + children[-1].root.width/2)
+        if n_kid == 2:
+          kids_width = kids_width0
+        else: # n_kid >= 3 case
+          kids_width = (kids_width0 + (n_kid-2)*dx + 
+                        sum([kid.width for kid in children[1:-1]]))
+          
+      w_root_l = children[0].root.width 
+      w_root_r = children[-1].root.width
       for i, kid in enumerate(children):
         kid.parent = self
         kid.y = dy + unit_height
         if i==0:
-          kid.x = -dlrkids/2 
+          kid.x = -kids_width/2 + w_root_l/2
         else:
           kid.x = children[i-1].x + children[i-1].width/2 + dx + \
                   children[i].width/2
       
-      assert abs(children[-1].x - dlrkids/2) < 1e-6, \
+      assert abs(children[-1].x - kids_width/2 + w_root_r/2) < 1e-6, \
              "the last child's x is wrong"
-
     else:
       self.children = []
-      self.width = tbox.width
+      self.width = self.root.width
       self.height = unit_height
     
   def __str__(self):
@@ -1188,23 +1203,26 @@ class GNode: # graph node
     # Draw the root.
     if self.parent is None:
       x_ref, y_ref = (self.root.x, self.root.y) 
-        # normally (center_x, center_y)
+        # normally, (x_ref, y_ref) = (center_x, center_y)
       if self.children: 
           # Then we shift the root down and maybe left/right too
           # so that the center of the whole tree coincides with 
           # the center of the axis.
         node_left = self.children[0]
         node_right = self.children[-1]
-        wl = node_left.width
-        wr = node_right.width
-        x = x_ref + (wl - wr)/4
+        x = x_ref
         y = y_ref - self.height/2 + self.unit_height/2
         self.root.txt.set_position((x, y))
         self.x, self.y = (x, y)
         # draw the horizontal line
-        plt1.hlines(y + self.unit_height, x+node_left.x-self.overhang, 
-                    x+node_right.x+self.overhang, linewidth=0.2, 
-                    color='black')
+        x11 = x + node_left.x - node_left.root.width/2 - self.overhang
+        x12 = x - self.root.width/2 - self.overhang
+        x1 = min(x11, x12)
+
+        x21 = x + node_right.x + node_right.root.width/2 + self.overhang
+        x22 = x + self.root.width/2 + self.overhang
+        x2 = max(x21, x22)
+        plt1.hlines(y + self.unit_height, x1, x2, linewidth=0.2, color='black')
       else: # Then there is no need to shift the root.
         pass
       self.root.txt.set_alpha(1)
@@ -1221,9 +1239,15 @@ class GNode: # graph node
       # draw horizontal line
       node_left = self.children[0]
       node_right = self.children[-1]
-      plt1.hlines(self.y + self.unit_height, 
-                   self.x + node_left.x - self.overhang, 
-                   self.x + node_right.x + self.overhang,
+      x11 = self.x + node_left.x - node_left.root.width/2 - self.overhang
+      x12 = self.x - self.root.width/2 - self.overhang
+      x1 = min(x11, x12)
+
+      x21 = self.x + node_right.x + node_right.root.width/2 + self.overhang
+      x22 = self.x + self.root.width/2 + self.overhang
+      x2 = max(x21, x22)
+
+      plt1.hlines(self.y + self.unit_height, x1, x2,
                    linewidth=0.2, color='black')
       # draw subtrees
       for kid in self.children:
