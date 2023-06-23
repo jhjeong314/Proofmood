@@ -439,21 +439,21 @@ class Node:
   def __str__(self):
     return self.build_polish_notation()
 
-  def build_polish_notation(self, operOpt=False):
-    ret_str = f"{self.token}" if operOpt else f"{self.token.value}"
+  def build_polish_notation(self, verbose=False):
+    ret_str = f"{self.token}" if verbose else f"{self.token.value}"
     if self.children:
       ret_str += ' '
-      ret_str += ' '.join(child.build_polish_notation(operOpt) 
+      ret_str += ' '.join(child.build_polish_notation(verbose) 
                         for child in self.children)
     return ret_str
   
-  def build_RPN(self, operOpt=False):
+  def build_RPN(self, verbose=False):
     ret_str = ''
     if self.children:
-      ret_str += ' '.join(child.build_RPN(operOpt) 
+      ret_str += ' '.join(child.build_RPN(verbose) 
                           for child in self.children) + ' '
       
-    ret_str += f"{self.token}" if operOpt else f"{self.token.value}"
+    ret_str += f"{self.token}" if verbose else f"{self.token.value}"
     
     return ret_str
 
@@ -680,7 +680,7 @@ class Node:
                if self.token.token_type == 'pred_pre' 
                else self.token2latex(self.token))
       arity = self.token.arity # must be 1, 2, or 3
-      if arity == 1: # not, forall, exists
+      if arity == 1: # not, forall, exists, unary predicate
         if self.token.token_type in ('conn_1ary', 'pred_pre'):
           kid1 = self.children[0]
           kid1_str = kid1.build_bussproof_rec()
@@ -1020,32 +1020,14 @@ def parse_text(input_text):
 
 #region (3/3) Utils for rendering AST ## ------------------------------
 
-def build_GNode(ast, xpos, ypos, ax, r):
-  LATEX_DICT = Node.LATEX_DICT
-  
-  # post-order traversal (unlike the other 3 methods)
-  if(ast.children):
-    children = [build_GNode(kid, xpos, ypos, ax, r) 
-                for kid in ast.children]
-  else:
-    children = []
-  label = ast.token.value
-
-  if ast.token.token_type == 'prop_letter':
-    label = Node.ident2latex(ast.token)
-  else:
-    label = LATEX_DICT[label]
-  
-  txt = ax.text(xpos, ypos, '$' + label + '$', 
-                ha='center', va='center', fontsize=6, alpha=0)
-  return GNode(txt, ax, r, children=children)
-
-def draw_ast(ast, verbose=False):
+def draw_ast(ast: Node, verbose=False):
   import matplotlib.pyplot as plt
 
   plt.rcParams["mathtext.fontset"] = "cm" 
     # cm = computer modern by Donald Knuth
   plt.rcParams["figure.dpi"] = 300 # default 100
+  plt.rcParams["text.usetex"] = True 
+    # without this, some LaTeX commands do not work
   fig, ax = plt.subplots(1, 1, figsize=(1.5, 1))
   ax.set(aspect='equal')
   ax.set_xlim(0, 3) 
@@ -1060,7 +1042,39 @@ def draw_ast(ast, verbose=False):
   if verbose:
     print(tree)
 
-  tree.draw_tree(plt)
+  tree.draw_tree_GNode(plt)
+
+def build_GNode(ast: Node, xpos, ypos, ax, r):
+  # Node has 3 attributes: token: Token, children: list of Nodes, 
+  #                        and type ::= "formula" | "term".
+
+  # post-order traversal
+  if(ast.children and ast.type=='formula'): # Node children
+    if ast.token.token_type == 'quantifier':
+      kid1 = ast.children[0] # a variable for the determiner
+      kidd11 = kid1.children[0] # a formula for the determiner's scope
+      children = [build_GNode(kidd11, xpos, ypos, ax, r)]
+    else:
+      children = [build_GNode(kid, xpos, ypos, ax, r) 
+                for kid in ast.children] # GNode children
+  else:
+    children = [] 
+
+  if ast.type == 'formula':
+    if ast.token.token_type in ('pred_pre', 'prop_letter'):
+      label = Node.ident2latex(ast.token)
+    elif ast.token.token_type == 'quantifier':
+      kid1 = ast.children[0] # a variable for the determiner
+      kid1_label = Node.ident2latex(kid1.token)
+      label = Node.token2latex(ast.token) + ' ' + kid1_label
+    else:
+      label = Node.token2latex(ast.token)
+  else:
+    label = Node.build_infix_latex_term(ast)
+  
+  txt = ax.text(xpos, ypos, '$' + label + '$', 
+                ha='center', va='center', fontsize=6, alpha=0)
+  return GNode(txt, ax, r, children=children)
 
 #endregion
 
@@ -1074,7 +1088,7 @@ class Tbox: # text object together with its position and size
       # txt.get_text() is the label (latex source string)
     bbox = txt.get_window_extent(renderer=r) # unit: pixel
     bbox_d = bbox.transformed(ax.transData.inverted()) 
-      # unit: data coordinate
+      # unit: data coordinate. _d signifies data coordinate
     x, y = txt.get_position()
     self.x = x
     self.y = y
@@ -1170,7 +1184,7 @@ class GNode: # graph node
         s += kid.get_str() # should revise using join()
     return s
    
-  def draw_tree(self, plt1):
+  def draw_tree_GNode(self, plt1):
     # Draw the root.
     if self.parent is None:
       x_ref, y_ref = (self.root.x, self.root.y) 
@@ -1213,5 +1227,5 @@ class GNode: # graph node
                    linewidth=0.2, color='black')
       # draw subtrees
       for kid in self.children:
-        kid.draw_tree(plt1)
+        kid.draw_tree_GNode(plt1)
 # endregion

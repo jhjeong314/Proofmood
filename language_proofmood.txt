@@ -1,0 +1,24 @@
+<proof> ::= <hypothesis> "entails" <conclusion>
+<hypothesis> ::= <line> { <line> }
+<conclusion> ::= ( <line_annotated> | <indent> <proof> ) { ( <line_annotated> | <indent> <proof> ) }
+<line> ::= <formula> "\n" | <comment> | <blank>
+<blank> ::= "\n"
+<comment> ::= { <white_space> } "#" <utf8string> "\n"
+<utf8string> ::= { [.] } # no "\n" allowed
+<line_annotated> ::= <formula> <annotation> "\n" | <comment> "\n" | <blank>
+<annotation> ::= <premise> <rule_of_inference>
+<premise> ::= { <node_identifier> "," }
+<node_identifier> ::= <numeral> | <numeral> "-" <numeral>
+<rule_of_inference> ::= ("intro" | "elim") (<connective> | <quantifier>) | "repeat" | "LEM"
+<connective> ::= "bot" | "not" | "and" | "or" | "imp" | "iff"
+<quantifier> ::= "forall" | "exists"
+
+A <line_annotated> is *verified* iff it is one of the following:
+* <comment> or <blank>
+* <formula> is of the form alpha or not alpha and <premise> is empty and <rule_of_inference> is "LEM"
+* <formula> is alpha and there exists alpha in a node *before* the <formula>
+* <formula> is alpha and there exist beta imp alpha and beta before alpha and <rule_of_inference> is "elim" "imp"
+* ..
+* ..
+
+A <proof> is *verified* iff all <line_annotated> are verified.
