@@ -1,10 +1,12 @@
 <proof> ::= <hypothesis> "entails" <conclusion>
-<hypothesis> ::= <line> { <line> }
-<conclusion> ::= ( <line_annotated> | <indent> <proof> ) { ( <line_annotated> | <indent> <proof> ) }
+<hypothesis> ::= <line>+
 <line> ::= <formula> "\n" | <comment> | <blank>
 <blank> ::= "\n"
 <comment> ::= { <white_space> } "#" <utf8string> "\n"
 <utf8string> ::= { [.] } # no "\n" allowed
+<conclusion> ::= ( <line_annotated> | <indent> <subproof> )+
+<subproof> ::= <hypothesis0> "entails" <conclusion>
+<hypothesis0> ::= <line>
 <line_annotated> ::= <formula> <annotation> "\n" | <comment> "\n" | <blank>
 <annotation> ::= <premise> <rule_of_inference>
 <premise> ::= { <node_identifier> "," }

@@ -343,11 +343,6 @@ def print_in_chunk(li, chunk_size=5): # li is any iterable
 # <quantifier> ::= "forall" | "exists"
 # <atom> ::= <prop_letter> | <pred_pre> "(" <term> {',' <term>} ")" |
 #            <term> <pred_in> <term>
-
-# # The "bot" connective is typically classified as a compound formula, 
-# # but when it comes to parsing, it is treated as an atom.
-# # prop_letter, pred_pre, pred_in are defined in the Token class.
-
 # <term> ::= (<term1> | <nterm1>) { <oper_in_1> <term1> }
 # <nterm1> ::= <oper_pre> { <oper_pre> } <term1>
 # <term1> ::= <factor> { <oper_in_2> <factor> }
