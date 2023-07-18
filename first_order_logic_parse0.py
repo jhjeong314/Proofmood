@@ -398,6 +398,7 @@ class Node:
     # underscore, then it is not rendered because it is interpreted as 
     # the arity of the symbol.
     #endregion
+
     label = token.value
     pos_underscore = label.rfind('_')
     if (label[-1].isdecimal() and 
@@ -408,22 +409,17 @@ class Node:
     if pos_underscore >= 0: # underscore exists in the identifier
       str1 = label[:pos_underscore]
       str2 = label[pos_underscore+1:]
-      if len(str1) > 1:
-        str1 = r"{\rm " + str1.replace("_", r"\_") + r"}"
-      if str2:
-        ret_val = str1 + r"_{" + str2 + r"}"
-        # if there is no character after the last underscore, 
-        # the last underscore is not rendered
-      else:
-        ret_val = str1
-    else: # no underscore in the identifier
+      subscript = r"_{" + str2 + r"}" if str2 else ""
+    else:
       str1 = label
-      if len(str1) > 1 and not str1.isdecimal():
-        ret_val = r"{\rm " + str1 + r"}"
-      else:
-        ret_val = str1
+      subscript = ""
 
-    return ret_val
+    if len(str1) > 1 and not str1.isdecimal():
+      left_str = r"{\rm " + str1.replace("_", r"\_") + r"}"
+    else: 
+        left_str = str1
+
+    return left_str + subscript
 
   def __init__(self, token, children=None):
     self.token = token # the node is labeled with a Token object

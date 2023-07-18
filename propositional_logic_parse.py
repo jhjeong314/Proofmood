@@ -116,16 +116,17 @@ def identifier_to_latex(instr):
   if pos_underscore >= 0:
     str1 = instr[:pos_underscore]
     str2 = instr[pos_underscore+1:]
-    if str2:
-      ret_val = r"{\rm " + str1.replace("_", r"\_") + r"}" + r"_{" + str2 + r"}"
-    else:
-      ret_val = r"{\rm " + instr.replace("_", r"\_") + r"}"
+    subscript = r"_{" + str2 + r"}" if str2 else ""
   else:
     str1 = instr
-    ret_val = r"{\rm " + str1 + r"}"
+    subscript = ""
 
-  return ret_val
+  if len(str1) > 1 and not str1.isdecimal():
+    left_str = r"{\rm " + str1.replace("_", r"\_") + r"}"
+  else: 
+      left_str = str1
 
+  return left_str + subscript
 
 class Node:
   LATEX_DICT = dict([("not", r"\neg"), ("and", r"\wedge"), ("or", r"\vee"),

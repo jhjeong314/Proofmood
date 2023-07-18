@@ -1,25 +1,9 @@
-<proof> ::= <hypothesis> "entails" <conclusion>
-<hypothesis> ::= <line>+
-<line> ::= <formula> "\n" | <comment> | <blank>
-<blank> ::= "\n"
-<comment> ::= { <white_space> } "#" <utf8string> "\n"
-<utf8string> ::= { [.] } # no "\n" allowed
-<conclusion> ::= ( <line_annotated> | <indent> <subproof> )+
-<subproof> ::= <hypothesis0> "entails" <conclusion>
-<hypothesis0> ::= <line>
-<line_annotated> ::= <formula> <annotation> "\n" | <comment> "\n" | <blank>
-<annotation> ::= <premise> <rule_of_inference>
-<premise> ::= { <node_identifier> "," }
-<node_identifier> ::= <numeral> | <numeral> "-" <numeral>
-<rule_of_inference> ::= ("intro" | "elim") (<connective> | <quantifier>) | "repeat" | "LEM"
-<connective> ::= "bot" | "not" | "and" | "or" | "imp" | "iff"
-<quantifier> ::= "forall" | "exists"
 
 A <line_annotated> is *verified* iff it is one of the following:
-* <comment> or <blank>
-* <formula> is of the form alpha or not alpha and <premise> is empty and <rule_of_inference> is "LEM"
-* <formula> is alpha and there exists alpha in a node *before* the <formula>
-* <formula> is alpha and there exist beta imp alpha and beta before alpha and <rule_of_inference> is "elim" "imp"
+* <node_identifier> (<comment> or <blank>)
+* n 'alpha or not alpha' and <rule_of_inference> is "LEM" and <premise> is empty 
+* n 'alpha' and rule of inference is "repeat" and <premise> is node_identifier m there exists m 'alpha' *before* n 'alpha'
+* n 'alpha' and <rule_of_inference> is "elim" "imp" and <premise> is m, k where there exist m 'beta' and k 'beta imp alpha' *before* n 'alpha'
 * ..
 * ..
 
