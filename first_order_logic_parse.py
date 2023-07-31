@@ -1,4 +1,4 @@
-# This file is imported by FO_parser1st.ipynb.
+# This file is imported by first_order_logic_parser.ipynb.
 
 ## (1/3) Tokenization ## ----------------------------------------------
 
@@ -94,6 +94,7 @@ class Token:
   FMLA_ROOTS = FMLA_TOKENS + ("conn_1ary", "conn_2ary", "conn_arrow", 
     "quantifier", "var_determiner") 
     # a parsed node is a formula iff it has a token in FMLA_ROOTS
+  NON_PRIME_FMLA = ("conn_1ary", "conn_2ary", "conn_arrow")
 
   def __init__(self, value):
     CONSTS = self.CONSTS
@@ -287,7 +288,7 @@ def tokenizer(input_text):
       raise ValueError(f"'{s}' is invalid (non-ASCII)")
     if not (set(s).issubset(Token.SPECIAL_CHARS) or 
             Token.isnumeral(s) or Token.isword(s)):   
-      raise ValueError(f"'{s}' is invalid (non-token)")
+      raise ValueError(f"'{s}' is invalid (illegal character)")
     
     if set(s).issubset(Token.SPECIAL_CHARS) and len(s) > 1:
       # split string of consecutive special chars into 
@@ -368,24 +369,27 @@ class Node:
   #region Comment
   # Other than the above and '^', for all reserved tokens, just use 
   # ("token.value", r"\token.value") for the mapping.
-  # Special care is needed for '^'. See the build_infix_latex_formula() 
+  # Special care is needed for '^'. See the build_infix_formula() 
   #   method below.
-  # For user-defined tokens, use the following static method ident2latex().
+  # For user-defined tokens, use the following static method ident2latex(opt).
   #endregion
 
   @staticmethod
-  def token2latex(token: Token) -> str:
+  def token2latex(token: Token, opt: str='latex') -> str:
     # for oper_*, pred_in (declared in Token class)
     label = token.value
-    if (latex_str := Node.LATEX_DICT.get(label)):
-      return latex_str
-    elif label.isalnum():
-        return f"\\{label}"
-    else:
+    if opt == 'latex':
+      if (latex_str := Node.LATEX_DICT.get(label)):
+        return latex_str
+      elif label.isalnum():
+          return f"\\{label}"
+      else:
+        return label
+    else: # opt == 'text'
       return label
     
   @staticmethod
-  def ident2latex(token: Token) -> str:
+  def ident2latex(token: Token, opt: str='latex') -> str:
     #region Comment
     # for const, var, func_pre, pred_pre, prop_letter, numeral
     # Identifier means the token.value when token.token_type is "var",
@@ -398,38 +402,44 @@ class Node:
     # underscore, then it is not rendered because it is interpreted as 
     # the arity of the symbol.
     #endregion
+
     label = token.value
-    pos_underscore = label.rfind('_')
-    if (label[-1].isdecimal() and 
-        token.token_type in ("func_pre", "pred_pre") and
-        (pos_underscore < 0 or pos_underscore != len(label)-2)):
-      label = label[:-1] # chop-off the last character
-    
-    if pos_underscore >= 0: # underscore exists in the identifier
-      str1 = label[:pos_underscore]
-      str2 = label[pos_underscore+1:]
-      subscript = r"_{" + str2 + r"}" if str2 else ""
-    else:
-      str1 = label
-      subscript = ""
+    if opt == 'latex':
+      pos_underscore = label.rfind('_')
+      if (label[-1].isdecimal() and 
+          token.token_type in ("func_pre", "pred_pre") and
+          (pos_underscore < 0 or pos_underscore != len(label)-2)):
+        label = label[:-1] # chop-off the last character
+      
+      if pos_underscore >= 0: # underscore exists in the identifier
+        str1 = label[:pos_underscore]
+        str2 = label[pos_underscore+1:]
+        subscript = r"_{" + str2 + r"}" if str2 else ""
+      else:
+        str1 = label
+        subscript = ""
 
-    if len(str1) > 1 and not str1.isdecimal():
-      left_str = r"{\rm " + str1.replace("_", r"\_") + r"}"
-    else: 
-        left_str = str1
+      if len(str1) > 1 and not str1.isdecimal():
+        left_str = r"{\rm " + str1.replace("_", r"\_") + r"}"
+      else: 
+          left_str = str1
 
-    return left_str + subscript
+      return left_str + subscript
+    else: # opt == 'text'
+      return label
 
   def __init__(self, token, children=None):
     self.token = token # the node is labeled with a Token object
     self.children = children if children else [] # list of Node objects
     self.type = ('formula' if self.token.token_type in Token.FMLA_ROOTS 
                            else 'term')
+    self.index = -1 # 0,1,2,.. for truth tree
+    self.bValue = -1 # 0,1 for truth tree
 
   def __str__(self):
     return self.build_polish_notation()
 
-  def build_polish_notation(self, verbose=False):
+  def build_polish_notation(self, verbose=False) -> str:
     ret_str = f"{self.token}" if verbose else f"{self.token.value}"
     if self.children:
       ret_str += ' '
@@ -437,7 +447,7 @@ class Node:
                         for child in self.children)
     return ret_str
   
-  def build_RPN(self, verbose=False):
+  def build_RPN(self, verbose=False) -> str:
     ret_str = ''
     if self.children:
       ret_str += ' '.join(child.build_RPN(verbose) 
@@ -447,47 +457,47 @@ class Node:
     
     return ret_str
 
-  def build_infix_latex(self):
+  def build_infix(self, opt: str='latex') -> str:
     if self.type == 'term':
-      return self.build_infix_latex_term()
+      return self.build_infix_term(opt)
     else: # self.type == 'formula'
-      return self.build_infix_latex_formula()
-    
-  def build_infix_latex_term(self):
+      return self.build_infix_formula(opt)
+            
+  def build_infix_term(self, opt: str) -> str:
     LATEX_DICT = self.LATEX_DICT
     if not self.children: # leaf node ::= variable | const | numeral
-      return self.ident2latex(self.token)
+      return self.ident2latex(self.token, opt)
     else: # non-leaf node
       # token_type ::= func_pre | oper_in_1 | oper_in_2 | oper_in_3 |
       #                oper_pre | oper_post 
       ret_str = ''
       if self.token.token_type == 'func_pre':
-        label = self.ident2latex(self.token)
-        args = ', '.join(kid.build_infix_latex() for kid in self.children)
+        label = self.ident2latex(self.token, opt)
+        args = ', '.join(kid.build_infix(opt) for kid in self.children)
         ret_str += label + '(' + args + ')'
       else: # token is an operator with various arities and precedences
         if self.token.precedence == 1: 
           # oper_pre(unary) or oper_in_1(binary, +, -, cap, cup, oplus)
           if self.token.token_type == 'oper_pre':
             kid1 = self.children[0]
-            kid1_str = kid1.build_infix_latex()
+            kid1_str = kid1.build_infix(opt)
             if kid1.token.precedence == 1:
               kid1_str = '(' + kid1_str + ')'
             # else pass
-            ret_str += self.token2latex(self.token) + kid1_str
+            ret_str += self.token2latex(self.token, opt) + kid1_str
           else: # oper_in_1
             kid1, kid2 = self.children
-            kid1_str = kid1.build_infix_latex()
-            kid2_str = kid2.build_infix_latex()
+            kid1_str = kid1.build_infix(opt)
+            kid2_str = kid2.build_infix(opt)
             if ((self.token.value in Token.OPER_PRE and kid2.token.precedence == 1) or
                 kid2.token.token_type == 'oper_pre'):
               kid2_str = '(' + kid2_str + ')'
             # else pass
-            ret_str += kid1_str + ' ' + self.token2latex(self.token) + ' ' + kid2_str
+            ret_str += kid1_str + ' ' + self.token2latex(self.token, opt) + ' ' + kid2_str
         elif self.token.precedence == 2: # oper_in_2(binary, *, /, %, ...)
           kid1, kid2 = self.children
-          kid1_str = kid1.build_infix_latex()
-          kid2_str = kid2.build_infix_latex()
+          kid1_str = kid1.build_infix(opt)
+          kid2_str = kid2.build_infix(opt)
           # determine if parentheses are needed
           if (kid2.token.precedence < self.token.precedence or
               # '/', '%', 'div' are non-associative
@@ -496,12 +506,12 @@ class Node:
             kid2_str = '(' + kid2_str + ')'
           if kid1.token.precedence < self.token.precedence:
             kid1_str = '(' + kid1_str + ')'
-          ret_str += kid1_str + ' ' + self.token2latex(self.token) + \
+          ret_str += kid1_str + ' ' + self.token2latex(self.token, opt) + \
                      ' ' + kid2_str
         elif self.token.precedence == 3: # oper_in_3(binary, ^ exponentiation)
           kid1, kid2 = self.children
-          kid1_str = kid1.build_infix_latex()
-          kid2_str = kid2.build_infix_latex()
+          kid1_str = kid1.build_infix(opt)
+          kid2_str = kid2.build_infix(opt)
           # determine if parentheses are needed
           if kid1.token.precedence <= 4:
             # '^' is right-associative, and we want parentheses in (a')^2
@@ -512,44 +522,46 @@ class Node:
           ret_str += kid1_str + '^' + '{' + kid2_str + '}'
         else: # precedence = 4. Must be of type OPER_POST.
           kid1 = self.children[0]
-          kid1_str = kid1.build_infix_latex()
+          kid1_str = kid1.build_infix(opt)
           if kid1.token.precedence <= self.token.precedence: 
             # true unless kid1 is an atomic term
             kid1_str = '(' + kid1_str + ')'
-          ret_str += kid1_str + self.token2latex(self.token)
+          ret_str += kid1_str + self.token2latex(self.token, opt)
       return ret_str
 
-  def build_infix_latex_formula(self):  
+  def build_infix_formula(self, opt: str='text') -> str:  
     LATEX_DICT = self.LATEX_DICT
 
     # 1. atomic formulas and bot
     if not self.children: # 'prop_letter' or 'conn_0ary'
       # 1.1 terminal nodes
       if self.token.token_type == 'prop_letter':
-        return self.ident2latex(self.token)
+        return self.ident2latex(self.token, opt)
       else: # self.token.value must be 'bot'
         return LATEX_DICT[self.token.value]
     elif self.token.token_type in Token.FMLA_TOKENS: 
       # 'pred_pre', 'pred_in', 'equality'
       # 1.2 internal nodes
       if self.token.token_type == 'pred_pre':
-        label = self.ident2latex(self.token)
-        args = ', '.join(kid.build_infix_latex() for kid in self.children)
+        label = self.ident2latex(self.token, opt)
+        args = ', '.join(kid.build_infix(opt) for kid in self.children)
         return label + '(' + args + ')'
       else: # 'pred_in' or 'equality'
         kid1, kid2 = self.children
-        kid1_str = kid1.build_infix_latex()
-        kid2_str = kid2.build_infix_latex()
-        return kid1_str + ' ' + self.token2latex(self.token) + ' ' + kid2_str
+        kid1_str = kid1.build_infix(opt)
+        kid2_str = kid2.build_infix(opt)
+        return (kid1_str + ' ' + self.token2latex(self.token, opt) + 
+                ' ' + kid2_str)
     # 2. compound formulas except bot--i.e., connectives and quantifiers
     else: 
       ret_str = ''
       if self.token.arity == 2:
         # 2.1 binary connectives
-        token_str = '\: ' + LATEX_DICT[self.token.value] + '\: '
+        token_str = (r'\: ' + LATEX_DICT[self.token.value] + r'\: '
+                     if opt=='latex' else f" {self.token.value} ")
         kid1, kid2 = self.children
-        kid1_str = kid1.build_infix_latex()
-        kid2_str = kid2.build_infix_latex()
+        kid1_str = kid1.build_infix(opt)
+        kid2_str = kid2.build_infix(opt)
         if self.token.token_type == 'conn_arrow': # 'imp', 'iff', 'xor'
           # determine whether we need parentheses around kid1
           if kid1.token.token_type == 'conn_arrow':
@@ -581,34 +593,37 @@ class Node:
               kid2_str = f"({kid2_str})"
           # x < y = z case
           if self.token.value == 'and':
-            if (v_str := self.seq_infix()):
-              return v_str
+            if (v_str := self.seq_infix(opt)):
+              return v_str 
             else:
               pass
         ret_str += kid1_str + token_str + kid2_str
       elif self.token.token_type == 'conn_1ary': 
         # 2.2 unary connectives (actually, negation only)
-        token_str = LATEX_DICT[self.token.value] + '\, ' 
+        token_str = (LATEX_DICT[self.token.value] + r'\, ' if opt=='latex'
+                     else self.token.value + ' ')
         kid1 = self.children[0]
-        kid1_str = kid1.build_infix_latex()
+        kid1_str = kid1.build_infix(opt)
         # determine whether we need parentheses around kid1
         if kid1.token.token_type in ('conn_2ary', 'conn_arrow', 'pred_in', 'equality'):
           kid1_str = f"({kid1_str})"
         ret_str += token_str + kid1_str
       else:
          # 2.3 quantifier
-        token_str = LATEX_DICT[self.token.value] + ' '
+        token_str = (LATEX_DICT[self.token.value] if opt=='latex'
+                     else self.token.value) + ' '
         kid1 = self.children[0] # a variable for determiner
-        kid1_str = self.ident2latex(kid1.token)
+        kid1_str = self.ident2latex(kid1.token, opt)
         kid11 = kid1.children[0]
-        kid11_str = kid11.build_infix_latex()
+        kid11_str = kid11.build_infix(opt)
         # determine whether we need parentheses around kid11
         if kid11.token.token_type in ('pred_in', 'equality'):
           kid11_str = f"({kid11_str})"
-        ret_str += token_str + kid1_str + '\, ' + kid11_str
+        ret_str += (token_str + kid1_str + (r"\, " if opt=='latex' else " ") + 
+                    kid11_str)
       return ret_str  
 
-  def seq_infix(self):
+  def seq_infix(self, opt) -> str:
     # sequence of terms connected by infix operators: i.e., x < y = z, which
     #   is parsed as x < y and y = z.
     # This method is called iff self.token.value == 'and'.
@@ -616,24 +631,24 @@ class Node:
     if kid2.token.token_type in ('pred_in', 'equality'):
       if kid1.token.token_type in ('pred_in', 'equality'):
         if kid1.children[1] == kid2.children[0]:
-          kid1_str = kid1.build_infix_latex()
-          kid2_token_str = kid2.token2latex(kid2.token)
-          kid22_str = kid2.children[1].build_infix_latex()
+          kid1_str = kid1.build_infix(opt)
+          kid2_token_str = kid2.token2latex(kid2.token, opt)
+          kid22_str = kid2.children[1].build_infix(opt)
           return ' '.join([kid1_str, kid2_token_str, kid22_str])
         else:
-          return False
+          return ''
       elif kid1.token.value == 'and':
         if (kid1.children[1].children[1] == kid2.children[0] and
-            (kid1_str := kid1.seq_infix())):
-          kid2_token_str = kid2.token2latex(kid2.token)
-          kid22_str = kid2.children[1].build_infix_latex()
+            (kid1_str := kid1.seq_infix(opt))):
+          kid2_token_str = kid2.token2latex(kid2.token, opt)
+          kid22_str = kid2.children[1].build_infix(opt)
           return ' '.join([kid1_str, kid2_token_str, kid22_str])
         else:
-          return False
+          return ''
       else:
-        return False
+        return ''
     else:
-      return False
+      return ''
 
   #region comment
   # bussproof tree has the following structure:
@@ -654,7 +669,7 @@ class Node:
 
     if self.type == 'term':
       # terminal node. use \AxiomC{..}
-      label = self.build_infix_latex_term()
+      label = self.build_infix_term('latex')
       the_str = r"\AxiomC" + r"{$" + label + "$}\n"
     # self.type == 'formula'
     elif not self.children: 
@@ -1052,7 +1067,7 @@ def build_GNode(ast: Node, xpos, ypos, ax, r):
 
   if ast.type == 'formula':
     if ast.token.token_type in ('pred_pre', 'prop_letter'):
-      label = Node.ident2latex(ast.token)
+      label = Node.ident2latex(ast.token, 'latex')
     elif ast.token.token_type == 'quantifier':
       kid1 = ast.children[0] # a variable for the determiner
       kid1_label = Node.ident2latex(kid1.token)
@@ -1060,7 +1075,7 @@ def build_GNode(ast: Node, xpos, ypos, ax, r):
     else:
       label = Node.token2latex(ast.token)
   else:
-    label = Node.build_infix_latex_term(ast)
+    label = Node.build_infix_term(ast, 'latex')
   
   txt = ax.text(xpos, ypos, '$' + label + '$', 
                 ha='center', va='center', fontsize=6, alpha=0)
