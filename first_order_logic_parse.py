@@ -90,11 +90,15 @@ class Token:
                       OPER_IN_2 + OPER_IN_3 + PRED_IN)
   SPECIAL_CHARS = "-!'^#+*/%=<>()[]{},"
   FMLA_TOKENS = ("pred_pre", "pred_in", "equality", "prop_letter", 
-    'conn_0ary') # an expression is a formula iff it has a token in FMLA_TOKENS
+    'conn_0ary') 
+    # an expression is a formula iff it has a token in FMLA_TOKENS
+    # A member of FMLA_TOKENS is precisely the root of a prime formula.
   FMLA_ROOTS = FMLA_TOKENS + ("conn_1ary", "conn_2ary", "conn_arrow", 
     "quantifier", "var_determiner") 
     # a parsed node is a formula iff it has a token in FMLA_ROOTS
-  NON_PRIME_FMLA = ("conn_1ary", "conn_2ary", "conn_arrow")
+  NON_PRIME_ROOTS = ("conn_1ary", "conn_2ary", "conn_arrow")
+  PRIME_ROOTS = ("pred_pre", "pred_in", "equality", "prop_letter",
+    "quantifier", "conn_0ary")
 
   def __init__(self, value):
     CONSTS = self.CONSTS
@@ -358,21 +362,24 @@ def print_in_chunk(li, chunk_size=5): # li is any iterable
 #endregion
 
 class Node:
+  from typing import List
+  import copy  
+
   LATEX_DICT = dict(
-    [("not", r"\neg"), ("and", r"\wedge"), ("or", r"\vee"),
-    ("imp", r"\rightarrow"), ("iff", r"\leftrightarrow"),
-    ("xor", r"\nleftrightarrow"), ("nin", r"\not\in"), ("bot", r"\bot"), 
-    ("emptyset", r"\varnothing"), ("^o", r"^{\circ}"), ("^inv", r"^{-1}"), 
-    ("^#", r"^\#"), ("%", r"\%"), ("<=", r"\le"), (">=", r"\ge"), 
-    ("divides", r"\,\vert\,"), ("ndivides", r"\;\vert\mskip-14mu\not\;\;"),
-    ("forall", r"\forall"), ("exists", r"\exists")])
-  #region Comment
-  # Other than the above and '^', for all reserved tokens, just use 
-  # ("token.value", r"\token.value") for the mapping.
-  # Special care is needed for '^'. See the build_infix_formula() 
-  #   method below.
-  # For user-defined tokens, use the following static method ident2latex(opt).
-  #endregion
+      [("not", r"\neg"), ("and", r"\wedge"), ("or", r"\vee"),
+      ("imp", r"\rightarrow"), ("iff", r"\leftrightarrow"),
+      ("xor", r"\nleftrightarrow"), ("nin", r"\not\in"), ("bot", r"\bot"), 
+      ("emptyset", r"\varnothing"), ("^o", r"^{\circ}"), ("^inv", r"^{-1}"), 
+      ("^#", r"^\#"), ("%", r"\%"), ("<=", r"\le"), (">=", r"\ge"), 
+      ("divides", r"\,\vert\,"), ("ndivides", r"\;\vert\mskip-14mu\not\;\;"),
+      ("forall", r"\forall"), ("exists", r"\exists")])
+    #region Comment
+    # Other than the above and '^', for all reserved tokens, just use 
+    # ("token.value", r"\token.value") for the mapping.
+    # Special care is needed for '^'. See the build_infix_formula() 
+    #   method below.
+    # For user-defined tokens, use the static method ident2latex(opt).
+    #endregion
 
   @staticmethod
   def token2latex(token: Token, opt: str='latex') -> str:
@@ -435,9 +442,15 @@ class Node:
                            else 'term')
     self.index = -1 # 0,1,2,.. for truth tree
     self.bValue = -1 # 0,1 for truth tree
+    self.alt_str = '' # P_1, P_1, .. for truth tree
 
   def __str__(self):
     return self.build_polish_notation()
+
+  def __eq__(self, other):
+    infix_self = self.build_infix('text')
+    infix_other = other.build_infix('text')
+    return infix_self == infix_other
 
   def build_polish_notation(self, verbose=False) -> str:
     ret_str = f"{self.token}" if verbose else f"{self.token.value}"
@@ -538,21 +551,23 @@ class Node:
       if self.token.token_type == 'prop_letter':
         return self.ident2latex(self.token, opt)
       else: # self.token.value must be 'bot'
-        return LATEX_DICT[self.token.value]
+        return (LATEX_DICT[self.token.value] if opt=='latex' 
+                else self.token.value)
     elif self.token.token_type in Token.FMLA_TOKENS: 
       # 'pred_pre', 'pred_in', 'equality'
       # 1.2 internal nodes
-      if self.token.token_type == 'pred_pre':
+      if self.token.token_type == 'pred_pre': # prefix predicate
         label = self.ident2latex(self.token, opt)
         args = ', '.join(kid.build_infix(opt) for kid in self.children)
         return label + '(' + args + ')'
-      else: # 'pred_in' or 'equality'
+      else: # 'pred_in' or 'equality' # infix predicate
         kid1, kid2 = self.children
         kid1_str = kid1.build_infix(opt)
         kid2_str = kid2.build_infix(opt)
         return (kid1_str + ' ' + self.token2latex(self.token, opt) + 
                 ' ' + kid2_str)
-    # 2. compound formulas except bot--i.e., connectives and quantifiers
+    # 2. compound formulas except bot -- i.e., connectives 
+    #    and quantifiers
     else: 
       ret_str = ''
       if self.token.arity == 2:
@@ -650,6 +665,14 @@ class Node:
     else:
       return ''
 
+  def display_infix(self, opt: str='latex'):
+    from IPython.display import display, Math
+    s = self.build_infix(opt)
+    if opt == 'latex':
+      display(Math(f"${s}$")) 
+    else:
+      print(s)
+
   #region comment
   # bussproof tree has the following structure:
   # 1. terminal node: \AxiomC{..}
@@ -717,6 +740,77 @@ class Node:
 
   def draw_tree(self, verbose=False):
     draw_ast(self, verbose)
+
+  #region syntactic manipulations
+  def node_at(self, pos: List[int]):
+    # The return value may be a term or a formula.
+    if pos == []:
+      return self
+    else:
+      ast = self
+      for i in pos:
+        ast = ast.children[i]
+      return ast
+    
+  def replace_node_at(self, pos: List[int], new_node, 
+                      dupl: str = ''):
+    # Make sure to replace subformula by a formula and
+    # a subterm by a term.
+    # dupl is either '' or 'dupl'. In the 1st case, We update self 
+    # and return None.  In the 2nd case, we create a new node by 
+    # the replacement and return the new node.
+    # pos must be nonempty.
+    import copy
+
+    assert isinstance(new_node, Node), \
+      "Node.replace_node_at(): new_node must be a Node object"
+    # I had to type check in this way. 
+    # type hinting "new_node: Node" does not work.
+
+    node0 = self if dupl == '' else copy.deepcopy(self)
+    node = node0
+    for i in pos[:-1]:
+      assert len(node.children) > i, \
+        "Node.replace_node_at(): pos is out of range"
+      node = node.children[i]
+    node.children[pos[-1]] = copy.deepcopy(new_node)
+    if dupl == 'dupl':
+      return node0
+
+  def replace_nodes_at(self, pos_li: List[List[int]],
+                      new_node_li, dupl: str=''):
+    # This method is a multiple version of replace_node_at().
+    # Members of pos_li must be incomparable.
+    import copy
+
+    assert len(pos_li) == len(new_node_li)
+    if dupl != 'dupl':
+      for i in range(len(pos_li)):
+        self.replace_node_at(pos_li[i], new_node_li[i])
+    else: 
+      node0 = copy.deepcopy(self)
+      for i in range(len(pos_li)):
+        node0.replace_node_at(pos_li[i], new_node_li[i])
+      return node0  
+
+  def substitute(self, var: str, new_node, dupl: str = ''):
+    # Input argument var is a string, which can be either an individual 
+    # variable/constant or a propositional variable.
+    # There is no difference in the code for handling these two cases.
+    import copy
+
+    node = copy.deepcopy(self) if dupl == 'dupl' else self
+    if node.token.value == var:
+      node = copy.deepcopy(new_node)
+    elif node.children:
+      for i, kid in enumerate(node.children):
+        # note that dupl=='dupl' is passed to the recursive call
+        node.children[i] = kid.substitute(var, new_node, 'dupl')
+    
+    if dupl == 'dupl':
+      return node
+
+  #endregion syntactic manipulations
 
   # end of class Node
 
@@ -893,7 +987,8 @@ class Parser:
       
 
   def term(self) -> Node:
-    if self.current_token.value in Token.OPER_PRE:
+    if self.current_token and \
+       self.current_token.value in Token.OPER_PRE:
       node = self.nterm1() 
     else:
       node = self.term1()
@@ -907,7 +1002,9 @@ class Parser:
   
   def nterm1(self) -> Node:
     token = self.current_token
-    if token is None or not self.current_token.value in Token.OPER_PRE:      
+    if token is None or \
+       not (self.current_token and \
+            self.current_token.value in Token.OPER_PRE):      
        node = self.term1()
     else:
       token.token_type = 'oper_pre'

@@ -1,6 +1,6 @@
 # This file is imported by first_order_logic_parser.ipynb in Google Colab.
 # The only difference of this file and first_order_logic_parse.py is that
-# line 1038 is commented out here.  This is because Google Colab does not
+# line 1039 is commented out here.  This is because Google Colab does not
 # support the use of plt.rcParams["text.usetex"] = True, without which
 # the rendering of some LaTeX symbols such as \le, \ge is not possible.
 
@@ -98,7 +98,7 @@ class Token:
   FMLA_ROOTS = FMLA_TOKENS + ("conn_1ary", "conn_2ary", "conn_arrow", 
     "quantifier", "var_determiner") 
     # a parsed node is a formula iff it has a token in FMLA_ROOTS
-  NON_PRIME_FMLA = ("conn_1ary", "conn_2ary", "conn_arrow")
+  NON_PRIME_ROOTS = ("conn_1ary", "conn_2ary", "conn_arrow")
 
   def __init__(self, value):
     CONSTS = self.CONSTS
@@ -542,7 +542,8 @@ class Node:
       if self.token.token_type == 'prop_letter':
         return self.ident2latex(self.token, opt)
       else: # self.token.value must be 'bot'
-        return LATEX_DICT[self.token.value]
+        return (LATEX_DICT[self.token.value] if opt=='latex' 
+                else self.token.value)
     elif self.token.token_type in Token.FMLA_TOKENS: 
       # 'pred_pre', 'pred_in', 'equality'
       # 1.2 internal nodes
