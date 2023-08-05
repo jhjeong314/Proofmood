@@ -435,6 +435,14 @@ class Node:
     else: # opt == 'text'
       return label
 
+  @staticmethod
+  def display_latex_li(str_li: List[str]) -> None:
+    from IPython.display import display, Math
+    node_li = [parse_text(s) for s in str_li]
+    latex_str_li = [node.build_infix('latex') for node in node_li]
+    latex_str = ',\\: '.join(latex_str_li)
+    display(Math('$[\\,' + latex_str + '\\,]$'))
+
   def __init__(self, token, children=None):
     self.token = token # the node is labeled with a Token object
     self.children = children if children else [] # list of Node objects
@@ -442,6 +450,7 @@ class Node:
                            else 'term')
     self.index = -1 # 0,1,2,.. for truth tree
     self.bValue = -1 # 0,1 for truth tree
+    self.level = -1 # 0,1,2,.. for truth tree
     self.alt_str = '' # P_1, P_1, .. for truth tree
 
   def __str__(self):

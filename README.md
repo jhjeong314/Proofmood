@@ -15,7 +15,9 @@ You can contact me at jhjeong314@gmail.com and/or treenote@snu.ac.kr.
 
 ## 0. Readme
 
-Most `.ipynb` files are uploaded to Google Colab, allowing you to run the code in your web browser.
+1. Most `.ipynb` files in this repo are also uploaded to Google Colab, allowing you to run the code in your web browser.
+1. The contents of `Document.pdf` provide an explanation of the fundamental theories that underlie this repository.
+
 
 ## 1. Arithmetic expressions
 
