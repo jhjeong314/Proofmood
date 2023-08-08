@@ -10,7 +10,7 @@
 
 # This file is imported by first_order_logic_parser.ipynb.
 
-## (1/3) Tokenization ## ----------------------------------------------
+## (1/4) Tokenization ## ----------------------------------------------
 
 #region Tokenization comments
 #### Constants
@@ -346,7 +346,7 @@ def print_in_chunk(li, chunk_size=5): # li is any iterable
     print(s, end=" " if i % chunk_size != chunk_size-1 else "\n")
 #endregion token class helper
 
-## (2/3) Parsing ## ---------------------------------------------------
+## (2/4) Parsing ## ---------------------------------------------------
 
 #region Comment
 # <formula> ::= { <comp_fmla1> "imp" } <comp_fmla1> | 
@@ -1156,7 +1156,7 @@ def draw_ast(ast: Node, verbose=False):
   ax.axis('off')
   center_x = ax.get_xlim()[1] / 2
   center_y = ax.get_ylim()[1] / 2
-  r = fig.canvas.get_renderer()
+  r = fig.canvas.get_renderer() # type: ignore
 
   tree = build_GNode(ast, center_x, center_y, ax, r)
 
