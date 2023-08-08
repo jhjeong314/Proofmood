@@ -1,7 +1,72 @@
 
-digraph {
-    A -> B;
-    B -> C;
-    C -> D;
-    D -> A;
+graph B {
+  rankdir=LR    // just for demo purposes
+
+  { rank=same   // just for demo purposes  
+  t1 [shape=plaintext,label=<
+  <TABLE CELLSPACING="0" CELLPADDING="2" BORDER="0">
+  <TR>
+    <TD BORDER="1" sides="b">A</TD>
+    <TD>&nbsp;</TD>
+    <TD BORDER="1" sides="b">B</TD>
+    <TD BORDER="1" sides="b">&nbsp;</TD>
+    <TD BORDER="1" sides="b">C</TD></TR>
+  <TR>
+    <TD BORDER="1" sides="b">&not;</TD>
+    <TD BORDER="1" sides="b">&nbsp;</TD>
+    <TD BORDER="1" sides="b">&nbsp;</TD>
+    <TD BORDER="1" sides="b">&or;</TD>
+    <TD BORDER="0">&nbsp;</TD>
+  </TR>
+  <TR>
+    <TD >&nbsp;</TD>
+    <TD>&rarr;</TD>
+    <TD >&nbsp;</TD>
+    <TD >&nbsp;</TD>
+    <TD >&nbsp;</TD>
+  </TR>  
+  </TABLE>>]
+
+  t2 [shape=plaintext,label=<
+  <TABLE CELLSPACING="0" CELLPADDING="2" BORDER="0">
+  <TR>
+    <TD BORDER="0" >&nbsp;</TD>
+    <TD BORDER="0" >&nbsp;</TD>
+    <TD BORDER="0" >&nbsp;</TD>    
+    <TD BORDER="1" sides="b">&lfloor;A&rfloor;</TD>
+    <TD BORDER="0">&nbsp;</TD>
+  </TR>
+
+  <TR>
+    <TD BORDER="0" >&nbsp;</TD>
+    <TD BORDER="0" >&nbsp;</TD>
+    <TD BORDER="0" >&nbsp;</TD>    
+    <TD BORDER="0" >&Pi;<sub>2</sub></TD>
+    <TD BORDER="0">&nbsp;</TD>
+  </TR>  
+  <TR>
+    <TD BORDER="0" >&Pi;<sub>1</sub></TD>
+    <TD BORDER="0" >&nbsp;</TD>
+    <TD BORDER="0" >&nbsp;</TD>
+    <TD BORDER="1" sides="b">B</TD>
+    <TD BORDER="0">&nbsp;</TD>
+  </TR>
+    <TR>
+    <TD BORDER="1" sides="b">A</TD>
+    <TD BORDER="1" sides="b">&nbsp;</TD>
+    <TD BORDER="1" sides="b">A</TD>
+    <TD BORDER="1" sides="b">&rarr;</TD>
+    <TD BORDER="1" sides="b">B</TD>    
+  </TR>
+  <TR>
+    <TD >&nbsp;</TD>
+    <TD>&nbsp;</TD>
+    <TD >B</TD>
+    <TD >&nbsp;</TD>
+    <TD >&nbsp;</TD>
+  </TR>  
+  </TABLE>
+  >]
+  }
+  t1--t2  [style=invis]
 }

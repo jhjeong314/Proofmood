@@ -390,7 +390,7 @@ class FormulaList:
     # This method is used for printing the footer as well.
     # tVal_assign consists of 0's and 1's for the row case
     # and 2's for the footer case.
-    bFooter = '2' in tVal_assign # tVal_assign == '22..2'
+    bFooter = '2' in tVal_assign 
 
     tvSeq = list(tVal_assign) + [str(i) for i in bValues]
       # tvSeq = truth value sequence
@@ -429,17 +429,30 @@ class FormulaList:
     for pos in empty_pos_li:
       tvSeq.insert(pos, '')
 
+    bFooter = (n_prop := tvSeq.count('L')) > 0 
+    if bFooter:
+      tvSeq = tvSeq[n_prop:]
+      prefix = r"\multicolumn{" + f"{n_prop}" + r"}{|c||}{Level}" + \
+                "\n    & "
+    else:
+      prefix = ''
     for i, s in enumerate(tvSeq):
-      if i > 0:
+      if(i > 0):
         tvSeq[i] = ' & ' + s
 
     postfix = r" \\ \hline" if bLast else r" \\"
-    print(''.join(tvSeq) + postfix)
+    print(prefix + ''.join(tvSeq) + postfix)
     
   def print_truth_table_footer(self, header: str, n: int,
                              bValues: List[int]) -> None:
     v_str = '2' * n # n = number of propositional letters
     self.print_truth_table_row(header, v_str, bValues)
+
+  def print_latex_footer(self, n_prop: int, e_p_li: List[int],
+                         tvSeq: List[str]) -> None:
+    level_str_li = ['L'] * n_prop
+    tvSeq = level_str_li + tvSeq
+    self.print_latex_row(e_p_li, tvSeq, True)
 
   def get_header_latex(self, header: str) -> Tuple[str, List[int]]:
     v_li = header.split()
@@ -524,9 +537,12 @@ class FormulaList:
     
     prime_subs_li = list(self.get_prime_subformulas())
     alt_str_li = self.label_prime_subs(prime_subs_li)
-    id = list(range(len(prime_subs_li))) # identity permutation
+    n_prime_node = len(prime_subs_li)
+    id = list(range(n_prime_node)) # identity permutation
     # say len(prime_sub_li) == 4, then id == [0, 1, 2, 3]
     perm = [j for _, j in sorted(zip(alt_str_li, id))] # permutation
+      # in R, we can do perm <- order(alt_str_li)
+    perm_inv = inverse_permutation(perm, n_prime_node)
     alt_str_li2 = sorted(alt_str_li)
          
     n_fmla = len(self.f_list)
@@ -539,7 +555,6 @@ class FormulaList:
     # print("")
 
     # Show prime subformulas and their alternate labels.
-    n_prime_node = len(prime_subs_li)
     prime_subs_li2 = [prime_subs_li[perm[j]] for j in range(n_prime_node)]
     if opt == 'text':
       print("prime subformulas =", prime_subs_li2)
@@ -570,7 +585,7 @@ class FormulaList:
     for i in range(1, n_row+1):
       tVal_assign = self.get_binary(n_row - i, n_prime_node)
       # Start from 11..1 and go down to 00..0.
-      tVal = ''.join([tVal_assign[perm[j]] for j in range(n_prime_node)])
+      tVal = ''.join([tVal_assign[perm_inv[j]] for j in range(n_prime_node)])
       self.get_truth_tree(tVal)
       bValues = []
       for f in self.f_list:
@@ -590,17 +605,18 @@ class FormulaList:
       print(f"{'-' * len(header)}")
       self.print_truth_table_footer(header, n_prime_node, bValues)
     else: # opt == 'latex':
-      # self.print_truth_table_footer(header, n_prime_node, bValues)
+      bVal_li = [str(i) for i in bValues]
+      self.print_latex_footer(n_prime_node, empty_pos_li, bVal_li) # pyright: ignore[reportUnboundVariable]  
       print(r"\end{tabular}")
       
   # end of class FormulaList
 
-# Utility function
+# Utility functions
 
 def show_tree_nodes(tree: Node) -> None: # 
 # This function closely follows the code of Formula.get_bValues(), 
 # utilizing an in-order traversal approach.
-# This function should be called after label_prime_subs() 
+# This function should be called after label_prime_subs(prime_subs_li) 
 # has been called.
 # Each prime node is labeled with alt_str, which is a short string
 # to represent the prime subformulas.  For instance suppose that
@@ -627,3 +643,9 @@ def show_tree_nodes(tree: Node) -> None: #
         show_tree_nodes(tree.children[1])
     else: # token_type in PRIME_ROOT
       show_this_node(tree)
+
+def inverse_permutation(f: List[int], n: int) -> List[int]:
+    inverse = [0] * n
+    for i in range(n):
+        inverse[f[i]] = i
+    return inverse
