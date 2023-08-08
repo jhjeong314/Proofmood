@@ -746,11 +746,12 @@ class Node:
   def draw_tree(self, verbose=False):
     try:
       from draw_tree import draw_ast
-    except ImportError:
+    except ImportError: 
       url = 'https://raw.githubusercontent.com/jhjeong314/Proofmood/main/logical_formulas'
       import httpimport
       with httpimport.remote_repo(url):
-        from draw_tree import draw_ast
+        # for Google Colab, which has limited capabilities with LaTeX
+        from draw_tree1 import draw_ast 
     draw_ast(self, verbose)
 
   #region syntactic manipulations

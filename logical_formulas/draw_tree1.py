@@ -1,4 +1,7 @@
-from first_order_logic_parse import *
+url = 'https://raw.githubusercontent.com/jhjeong314/Proofmood/main/logical_formulas'
+import httpimport
+with httpimport.remote_repo(url):
+  from first_order_logic_parse import *
 
 #region (1/2) Utils for rendering AST ## ------------------------------
 
@@ -8,7 +11,7 @@ def draw_ast(ast: Node, verbose=False):
   plt.rcParams["mathtext.fontset"] = "cm" 
     # cm = computer modern by Donald Knuth
   plt.rcParams["figure.dpi"] = 300 # default 100
-  plt.rcParams["text.usetex"] = True 
+  # plt.rcParams["text.usetex"] = True 
     # without this, some LaTeX commands do not work
   fig, ax = plt.subplots(1, 1, figsize=(3, 1.5))
   ax.set(aspect='equal')
