@@ -106,7 +106,7 @@ class Formula:
   #endregion comment1
 
   def get_prime_subformulas(self) -> set:
-    # This method is used in FormulaList.get_prime_subformulas().
+    # This method is used in TruthTable.get_prime_subformulas().
     MAX_N = 8 # maximum number of prime subformulas
     prime_subs = set()
     tree = self.ast
@@ -149,17 +149,17 @@ class Formula:
   #endregion comment2
 
   def label_prime_subs(self, prime_subs_li: List[str]) -> List[str]:
-    # This method uses FormulaList.label_prime_subs().
-    t_table = FormulaList([self])
+    # This method uses TruthTable.label_prime_subs().
+    t_table = TruthTable([self])
     return t_table.label_prime_subs(prime_subs_li)
 
   def show_p_sub_labels(self, prime_subs_li: List[str]) -> None:
-    # This method uses FormulaList.show_p_sub_labels().
-    t_table = FormulaList([self])
+    # This method uses TruthTable.show_p_sub_labels().
+    t_table = TruthTable([self])
     t_table.show_p_sub_labels(prime_subs_li)
 
   def assign_levels(self) -> None:
-    # This method is used in FormulaList.assign_levels().
+    # This method is used in TruthTable.assign_levels().
     # It assigns levels to the prop. nodes of the truth tree.
     # Prop. letters and bots are assigned level 1.
     # not A gets level n+1 where n = level of A.
@@ -188,7 +188,7 @@ class Formula:
       node.level = 1
 
   def get_truth_tree(self, tVal_assign: str) -> None:
-    # This method is used in FormulaList.get_truth_tree().
+    # This method is used in TruthTable.get_truth_tree().
     # tVal_assign is a truth-value assignment, represented by 
     # a string of 0's and 1's, for prime subformulas.
     # For bot, the constant False, we always assign 0.
@@ -273,15 +273,15 @@ class Formula:
   
   def show_truth_table(self, opt: str='text') -> None:
     # opt ::== 'text' | 'latex'
-    # This method uses FormulaList.show_truth_table().
-    t_table = FormulaList([self])
+    # This method uses TruthTable.show_truth_table().
+    t_table = TruthTable([self])
     t_table.show_truth_table(opt)
 
   # end of class Formula
 
 FList = List[Formula]
 
-class FormulaList:
+class TruthTable:
   def  __init__(self, f_list: FList):
     self.f_list = f_list
 
@@ -335,8 +335,9 @@ class FormulaList:
     return ret_li
 
   def show_p_sub_labels(self, prime_subs_li: List[str]) -> None:
-    # This method prints out the prime subformulas and their labels
+    # This method is prints out the prime subformulas and their labels
     # for each formula in self.f_list.
+    # It is for debugging, not necessary for building truth tables.
     def rec_fn(node: Node) -> None:
       if node.token.token_type in Token.NON_PRIME_ROOTS:
         for kid in node.children:
@@ -516,6 +517,20 @@ class FormulaList:
 
     return (header_latex, empty_pos_li)
 
+  def order(self, str_li: List[str]) -> tuple:
+    # This function is Python implementation of the R function order(),
+    # except that it returns the inverse permutation as well.
+    # If str_li == ['B', 'P2', 'A', 'P3', 'P1'], 
+    # then the return value is (perm, perm_inv), where
+    # perm == [2, 0, 4, 1, 3], and perm_inv == [1, 3, 0, 4, 2].
+    # Then we should have
+    #   permute_li(alt_str_li, perm) == sorted(alt_str_li)
+    id_perm = list(range(len(str_li))) # identity permutation
+    perm = [j for _, j in sorted(zip(str_li, id_perm))]
+    perm_inv = inverse_permutation(perm, len(str_li))
+    
+    return tuple([perm, 
+                  perm_inv])                                                           
   def show_truth_table(self, opt: str='text') -> None:
     # opt ::== 'text' | 'latex'
     # For opt == 'text', this method generates and prints out a truth 
@@ -538,12 +553,8 @@ class FormulaList:
     prime_subs_li = list(self.get_prime_subformulas())
     alt_str_li = self.label_prime_subs(prime_subs_li)
     n_prime_node = len(prime_subs_li)
-    id = list(range(n_prime_node)) # identity permutation
-    # say len(prime_sub_li) == 4, then id == [0, 1, 2, 3]
-    perm = [j for _, j in sorted(zip(alt_str_li, id))] # permutation
-      # in R, we can do perm <- order(alt_str_li)
-    perm_inv = inverse_permutation(perm, n_prime_node)
-    alt_str_li2 = sorted(alt_str_li)
+    perm, perm_inv = self.order(alt_str_li)
+    alt_str_li2 = permute_li(alt_str_li, perm) # == sorted(alt_str_li)
          
     n_fmla = len(self.f_list)
     print("Truth table for the following", end="")
@@ -555,7 +566,7 @@ class FormulaList:
     # print("")
 
     # Show prime subformulas and their alternate labels.
-    prime_subs_li2 = [prime_subs_li[perm[j]] for j in range(n_prime_node)]
+    prime_subs_li2 = permute_li(prime_subs_li, perm)
     if opt == 'text':
       print("prime subformulas =", prime_subs_li2)
       print("alt prop. letters =", alt_str_li2)
@@ -585,7 +596,7 @@ class FormulaList:
     for i in range(1, n_row+1):
       tVal_assign = self.get_binary(n_row - i, n_prime_node)
       # Start from 11..1 and go down to 00..0.
-      tVal = ''.join([tVal_assign[perm_inv[j]] for j in range(n_prime_node)])
+      tVal = ''.join(permute_li(list(tVal_assign), perm_inv))
       self.get_truth_tree(tVal)
       bValues = []
       for f in self.f_list:
@@ -609,7 +620,7 @@ class FormulaList:
       self.print_latex_footer(n_prime_node, empty_pos_li, bVal_li) # pyright: ignore[reportUnboundVariable]  
       print(r"\end{tabular}")
       
-  # end of class FormulaList
+  # end of class TruthTable
 
 # Utility functions
 
@@ -644,8 +655,12 @@ def show_tree_nodes(tree: Node) -> None: #
     else: # token_type in PRIME_ROOT
       show_this_node(tree)
 
-def inverse_permutation(f: List[int], n: int) -> List[int]:
+def inverse_permutation(perm: List[int], n: int) -> List[int]:
     inverse = [0] * n
     for i in range(n):
-        inverse[f[i]] = i
+        inverse[perm[i]] = i
     return inverse
+
+def permute_li(li: List, perm: List[int]) -> List:
+    assert len(li) == len(perm)
+    return [li[perm[i]] for i in range(len(li))]
