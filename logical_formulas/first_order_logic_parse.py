@@ -90,7 +90,6 @@ class Token:
   FMLA_TOKENS = ("pred_pre", "pred_in", "equality", "prop_letter", 
     'conn_0ary') 
     # an expression is a formula iff it has a token in FMLA_TOKENS
-    # A member of FMLA_TOKENS is precisely the root of a prime formula.
   FMLA_ROOTS = FMLA_TOKENS + ("conn_1ary", "conn_2ary", "conn_arrow", 
     "quantifier", "var_determiner") 
     # a parsed node is a formula iff it has a token in FMLA_ROOTS

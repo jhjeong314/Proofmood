@@ -122,30 +122,13 @@ class Formula:
     return prime_subs
   
   #region comment2
-  # Truth tree is a subtree of the AST of a formula.
-  # Each node in the truth tree is a subformula of the formula,
-  # where the subformula is a prime subformula or a subformula built
-  # from earlier nodes in the truth tree and connectives.
-  # In short, a truth tree is a tree of subformulas where each node
-  # is to be assigned a truth value.
+  # Truth tree is a subtree of the AST of a formula obtained by removing specific nodes.  The root node belongs to the truth tree.  If a node is labeled with a connective with positive arity, then each of its children belongs to the truth tree.  Therefore, every node within the truth tree is a prime subformula of the formula or a subformula built from earlier nodes within the truth tree and connectives.  In brief, a truth tree is a tree of subformulas where each node is to be assigned a truth value.
 
-  # bot, the constant False, is a prime subformula, but it is not
-  # in prime_subs for a technical reason.
+  # Nodes labeled with bot, which represents the constant False, are prime subformulas but are not included in the return value of the get\_prime\_subformulas() method due to technical reasons. We refer to the elements in the return value of this method as prime nodes.
 
-  # For example, if forall x P(x) imp Q is a formula,
-  # among the 4 subformulas, forall x P(x) and Q are prime subformulas,
-  # 3 are nodes in the truth tree, and 1, P(x) is not.
+  # Prime nodes within the truth tree should be assigned indices. If [A, forall x P(x), Q(x,y)] is the sorted list of all prime nodes within a set of formulas, then any node in the truth tree of a formula labeled A is assigned index 0. Similarly, nodes labeled with forall x P(x) are assigned index 1, and Q(x,y) is assigned index 2. Non-prime nodes within the truth tree are not assigned indices.
 
-  # Prime nodes of the truth tree should be given indices.
-  # We define the prime nodes to be the nodes corresponding to the 
-  # elements of prime_subs, which is the set of all prime subformulas
-  # except bot.
-
-  # For example, if [A, forall x P(x), Q(x,y)] is a prime_subs_li of a
-  # given set of formulas, then any node of the truth tree of a formula, 
-  # whose label is A is assigned index 0. Similarly,
-  # forall x P(x) is assigned index 1, and Q(x,y) is assigned index 2.
-  # Only the prime nodes in the truth tree are assigned indices.
+  # When a specific truth-value assignment is provided, each node in the proof tree is assigned a truth value in the following manner. Prime nodes are assigned values based on the truth-value assignment. Non-prime nodes are assigned values according to the truth functions of the corresponding connectives.
   #endregion comment2
 
   def label_prime_subs(self, prime_subs_li: List[str]) -> List[str]:
