@@ -354,13 +354,13 @@ class Parser:
     else:
       raise SyntaxError("Unexpected end of input, in atom()")  
     
-def parse_text(input_text):
+def parse_ast(input_text):
   tokens = tokenizer(input_text)
   parser = Parser(tokens)
   ast = parser.parse() # ast = Abstract Syntax Tree
   if parser.current_token is not None:
     raise SyntaxError(f"Unexpected token {parser.current_token} at {parser.index}," +
-                      f" in parse_text(). Expected end of input.")
+                      f" in parse_ast(). Expected end of input.")
   return ast
 
 ## (2/2) Draw bussproof style Trees ## ------------------------------------

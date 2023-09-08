@@ -209,7 +209,13 @@ class Token:
   @staticmethod
   def isnumeral(s: str) -> bool:
     # str is assumed to be isascii().
+    # test if s is the string for a non-negative integer
     return s.isdecimal() and (len(s) == 1 or s[0]!='0')
+  
+  @staticmethod
+  def is_nat(s: str) -> bool:
+    # test if s is the string for a positive integer
+    return s.isascii() and s.isdecimal() and s[0]!='0'
   
   @staticmethod
   def isword(s: str, opt: str="all") -> bool:
@@ -358,7 +364,25 @@ def print_in_chunk(li, chunk_size=5): # li is any iterable
 
 class Node:
   from typing import List
-  import copy  
+
+  def __init__(self, token, children=None):
+    self.token = token # the node is labeled with a Token object
+    self.children = children if children else [] 
+    #^ list of Node objects (not list of Token objects)
+    self.type = ('formula' if self.token.token_type in Token.FMLA_ROOTS 
+                           else 'term')
+    self.index = -1 # 0,1,2,.. for truth tree
+    self.bValue = -1 # 0,1 for truth tree
+    self.level = -1 # 0,1,2,.. for truth tree
+    self.alt_str = '' # P_1, P_1, .. for truth tree
+
+  def __str__(self):
+    return self.build_polish_notation()
+
+  def __eq__(self, other):
+    infix_self = self.build_infix('text')
+    infix_other = other.build_infix('text')
+    return infix_self == infix_other
 
   LATEX_DICT = dict(
       [("not", r"\neg"), ("and", r"\wedge"), ("or", r"\vee"),
@@ -433,28 +457,10 @@ class Node:
   @staticmethod
   def display_latex_li(str_li: List[str]) -> None:
     from IPython.display import display, Math
-    node_li = [parse_text(s) for s in str_li]
+    node_li = [parse_ast(s) for s in str_li]
     latex_str_li = [node.build_infix('latex') for node in node_li]
     latex_str = ',\\: '.join(latex_str_li)
     display(Math('$[\\,' + latex_str + '\\,]$'))
-
-  def __init__(self, token, children=None):
-    self.token = token # the node is labeled with a Token object
-    self.children = children if children else [] # list of Node objects
-    self.type = ('formula' if self.token.token_type in Token.FMLA_ROOTS 
-                           else 'term')
-    self.index = -1 # 0,1,2,.. for truth tree
-    self.bValue = -1 # 0,1 for truth tree
-    self.level = -1 # 0,1,2,.. for truth tree
-    self.alt_str = '' # P_1, P_1, .. for truth tree
-
-  def __str__(self):
-    return self.build_polish_notation()
-
-  def __eq__(self, other):
-    infix_self = self.build_infix('text')
-    infix_other = other.build_infix('text')
-    return infix_self == infix_other
 
   def build_polish_notation(self, verbose=False) -> str:
     ret_str = f"{self.token}" if verbose else f"{self.token.value}"
@@ -1122,13 +1128,13 @@ class Parser:
     else:
       raise SyntaxError("Unexpected end of input, in identifier()")
 
-def parse_text(input_text):
+def parse_ast(input_text):
   tokens = tokenizer(input_text)
   parser = Parser(tokens)
   ast = parser.parse() # ast = Abstract Syntax Tree
   if parser.current_token is not None:
     raise SyntaxError(
       f"Unexpected token '{parser.current_token}' at {parser.index}," +
-      f" in parse_text(), while end of input expected.")
+      f" in parse_ast(), while end of input expected.")
   return ast
 

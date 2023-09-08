@@ -36,4 +36,7 @@
   ],
   "python.languageServer": "Pylance",
   "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.extraPaths": [
+    "./logical_formulas"
+  ],
 }

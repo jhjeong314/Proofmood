@@ -6,7 +6,7 @@ class Formula:
   def __init__(self, input: str | Node):
     try:
       if isinstance(input, str):
-        self.ast = parse_text(input) 
+        self.ast = parse_ast(input) 
       else:
         self.ast = input
       if self.ast.type == 'term':
