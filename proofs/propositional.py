@@ -12,6 +12,7 @@ INTRO_ELIM = ['intro', 'elim']
 RULES_AUX = ['repeat', 'LEM', 'hyp']
 VERT = '│'
 PROVES = '├─'
+TAB = '\t'
 
 def ge_n(li: List[bool], n: int) -> bool:
   # test if there are at least n True in li
@@ -343,7 +344,7 @@ class ProofNode:
   # end of class Proof
 
 class ProofParser:
-  def __init__(self, lines: List[str], tabsize: int = 2):
+  def __init__(self, lines: List[str], tabsize: int):
     self.lines = lines
     self.current_line = None
     self.tabsize = tabsize
@@ -365,7 +366,9 @@ class ProofParser:
   # <comment> ::= { <white_space> } "#" <utf8string> "\n"
   # <utf8string> ::= { [.] } # no "\n" allowed
   # <conclusion> ::= { (<line_annotated> | <subproof>) }+
-  # <subproof> ::= <indent> <hypothesis0> "proves\n" <conclusion>
+  # <subproof> ::= "{{" <hypothesis0> "proves\n" <conclusion> "}}"
+  #^ In our implementation, subproofs are not enclosed in curly braces.
+  #^ Instead, they are indented like Python code.
   # <indent> ::= "\t" # tab
   # <hypothesis0> ::= <line>
   # <line_annotated> ::= <line_num> "." (<formula> <ann> "\n" | <comment> | <blank>)
@@ -382,13 +385,81 @@ class ProofParser:
   
   # end of class ProofParser
 
-def parse_fitch(proof_str: str) -> ProofNode:
-  str_li = proof_str.split('\n')
-  # remove trailing white spaces from each line
-  str_li1 = [s.rstrip() for s in str_li]
-  # remove leading and trailing blank lines from str_li1
-  lines = [s for s in str_li1 if s != ''] 
-  parser = ProofParser(lines)
-  # print(parser) # print parser.lines
+def get_str_li(proof_str: str, tabsize: int) -> List[str]:
+  """
+  Convert proof_str to a list of strings, where the subproofs are
+  indicated by double brace pairs.
+
+  Indentation is the key to parsing a Fitch-style proof.
+  In proof_str, indentations are indicated by tabs or spaces or VERTs.
+  1. For each line, get the level from the number of leading spaces 
+    or TABs or VERTs 
+  2. Remove the leading line number if any from each line.
+  3. From the change of level between lines, convert indentation to 
+    double brace pairs to indicate subproofs.
+  """
+  # split proof_str into lines
+  str_li = proof_str.split('\n') # this will be converted to str_li_ret
+  # remove leading and trailing empty line if any
+  if len(str_li[0]) == 0 or str_li[0].isspace():
+    str_li = str_li[1:]
+  if len(str_li[-1]) == 0 or str_li[-1].isspace():
+    str_li = str_li[:-1]
+
+  # determine whether VERT was used for indentation
+  VERT_used = str_li[0].startswith(VERT)
+
+  str_li_ret = [] # this will be returned
+  TAB_sp = ' ' * tabsize
+  pat = re.compile(r'\d+\.\s*') # for matching line numbers
+  level0 = 1
+  proves_str = PROVES if VERT_used else 'proves'
+  for str in str_li:
+    if VERT_used:
+      level = 0
+      while str.startswith(VERT):
+        str = str[1:]
+        level += 1
+    else:
+      level = 1
+      while True:
+        if str.startswith(TAB):
+          str = str[1:]
+          level += 1
+        elif str.startswith(TAB_sp):
+          str = str[tabsize:]
+          level += 1
+        else:
+          break
+    if (m := pat.search(str)):
+      str = str[m.end():]
+    if str.find(proves_str) == -1:
+      if level > level0:
+        str_li_ret.append("{{")
+      elif level < level0:
+        while level < level0:
+          str_li_ret.append("}}")
+          level0 -= 1
+      str_li_ret.append(str)
+      level0 = level
+
+  return str_li_ret
+
+def print_lines(lines: List[str]) -> None:
+  level = 1
+  for str in lines:
+    if str == "}}":
+      print(f"{('  ' * (level - 2))}{str}")
+      level -= 1
+    else:
+      print(f"{('  ' * (level - 1))}{str}")
+    if str == "{{":
+      level += 1
+
+def parse_fitch(proof_str: str, tabsize: int = 2) -> ProofNode:  
+  lines = get_str_li(proof_str, tabsize) 
+  #^ list of strings, where the subproofs are indicated by double brace pairs
+  #^ each element of the list corresponds to a line of the proof
+  parser = ProofParser(lines, tabsize)
 
   return parser.proof() 
