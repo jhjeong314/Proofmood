@@ -347,6 +347,7 @@ class ProofParser:
   def __init__(self, lines: List[str], tabsize: int):
     self.lines = lines
     self.current_line = None
+    self.level = 1 # indentation level (ground level = 1)
     self.tabsize = tabsize
     self.index = -1
     self.advance()
@@ -381,7 +382,30 @@ class ProofParser:
   #endregion grammar
        
   def proof(self) -> ProofNode:
-    raise NotImplementedError("proof() not implemented")
+    children = []
+    while (line_str := self.current_line) is not None:
+      if line_str == '{{':
+        self.level += 1
+        self.advance()
+        children.append(self.proof())
+      else:
+        if line_str == '}}':
+          self.level -= 1
+          if self.level <= 0:
+            raise ValueError("ProofParser.proof(): below ground level")
+          self.advance()
+          break
+        elif line_str == '':
+          label_type = 'blank'
+        elif line_str.lstrip().startswith('#'):
+          label_type = 'comment'
+        else:
+          label_type = 'formula'
+        label = NodeLabel(label_type, line_str)
+        children.append(ProofNode(label)) # leaf node
+        self.advance()
+
+    return ProofNode(NodeLabel(), children)
   
   # end of class ProofParser
 
@@ -461,5 +485,7 @@ def parse_fitch(proof_str: str, tabsize: int = 2) -> ProofNode:
   #^ list of strings, where the subproofs are indicated by double brace pairs
   #^ each element of the list corresponds to a line of the proof
   parser = ProofParser(lines, tabsize)
-
-  return parser.proof() 
+  proof_node = parser.proof()
+  if parser.level != 1:
+    raise ValueError("parse_fitch(): parsing ended with non-ground level")
+  return proof_node
