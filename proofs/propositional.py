@@ -296,47 +296,65 @@ class ProofNode:
     self.label = label
     self.children = children if children else [] 
     #^ list of ProofNode objects, not the list of labels
+    # The following 3 attributes are set by the build_index() method.
+    self.index = None # type: List[int] | None
+    self.line_num = None # type: str | None # e.g., '4', '6-10'
+
+  def build_index(self, p_index: List[int] = [], i: int = 0, 
+                  l_num: int = 1) -> int:
+    """ Set self.index and self.line_num.
+        Automatically called by the parse_fitch() function.
+
+        p_index means the parent's index. 
+        i is the (list)index of self in the parent's children list. 
+        l_num is the line number to be given to self for leaf nodes.
+        Return value is the increment of line number for the next leaf.
+        self.index is set from the root to the leaves.
+        self.line_num is set from the leaves to the root. 
+    """
+    self.index = p_index + [i]
+    if self.children: # subproof case
+      line_inc = 0 # tentative return value
+      for i, kid in enumerate(self.children):
+        line_inc += kid.build_index(self.index, i, l_num + line_inc)
+      self.line_num = f"{l_num}-{l_num + line_inc - 1}"
+    else: # leaf node case
+      self.line_num = str(l_num)
+      line_inc = 1
+
+    return line_inc
 
   def __str__(self) -> str:
-    return self.build_fitch_text()[0]
-  
-  def build_fitch_text(self, l_num: int = 1, level: int = 1) \
-                      -> Tuple[str, int]:
-    """ Recursively build a Fitch-style proof text which looks like:
-    │1. A imp B  .hyp
-    │2. B imp C  .hyp
-    ├─
-    ││3. A   .hyp
-    │├─
-    ││4. B   .imp elim 1,3
-    ││5. C   .imp elim 2,4
-    │6. A imp C  .imp intro 3-5    
+    return self.build_fitch_text()
+    
+  def build_fitch_text(self) -> str:
+    """ Recursively build Fitch-style proof text which looks like:
+      │1. A imp B  .hyp
+      │2. B imp C  .hyp
+      ├─
+      ││3. A   .hyp
+      │├─
+      ││4. B   .imp elim 1,3
+      ││5. C   .imp elim 2,4
+      │6. A imp C  .imp intro 3-5    
     """
-    ret_str = f"{self.label}"
-    if self.children:
-      ret_l_num = len(self.children) # l_num increases by ret_l_num
-      b_hyp = True 
-      #^ 1st child of a subproof is always a hypothesis
-      for kid in self.children:
-        # We insert a separator line ├─ 
-        # when the node type changes from hyp to conc.
-        if b_hyp and not kid.label.is_hyp:
-          ret_str += VERT * (level - 1) + PROVES + "\n"
-          b_hyp = False
-        
-        v_str, l_num_inc = kid.build_fitch_text(l_num, level + 1)
-        #^ level is the depth of the node in the tree, which is used to
-        #^ determine the number of vertical bars to be inserted.
-        if kid.label.type != 'subproof':
-          ret_str += VERT * level + f"{l_num}. " + v_str + "\n"
-        else:
-          ret_str +=  v_str
+    assert self.label.type == 'subproof', \
+      "build_fitch_text(): this method must be called for a subproof"
+    
+    ret_str = ''
+    b_hyp = True 
+    level = len(self.index) if self.index else 0 # always >= 1
+    for kid in self.children:
+      if b_hyp and not kid.label.is_hyp:
+        b_hyp = False
+        ret_str += VERT * (level - 1) + '├─\n'
+      if kid.label.type != 'subproof':
+        line_str = f"{kid.label}"
+        ret_str += VERT * level + f'{kid.line_num}. ' + line_str + '\n'
+      else:
+        ret_str += kid.build_fitch_text()
+    return ret_str
 
-        l_num += l_num_inc
-    else:
-      ret_l_num = 1
-    return (ret_str, ret_l_num)
-  
   def build_fitch_latex(self) -> str:
     """ Build a Fitch-style proof latex source. """
     raise NotImplementedError("build_fitch_latex() not implemented")
@@ -358,28 +376,6 @@ class ProofParser:
       self.current_line = self.lines[self.index]
     else:
       self.current_line = None
-
-  #region grammar  
-  # <proof> ::= <hypothesis> "proves\n" <conclusion>
-  # <hypothesis> ::= { <line> ".hyp"}+
-  # <line> ::= <line_num> "." (<formula> "\n" | <comment> | <blank>)
-  # <blank> ::= "\n"
-  # <comment> ::= { <white_space> } "#" <utf8string> "\n"
-  # <utf8string> ::= { [.] } # no "\n" allowed
-  # <conclusion> ::= { (<line_annotated> | <subproof>) }+
-  # <subproof> ::= "{{" <hypothesis0> "proves\n" <conclusion> "}}"
-  #^ In our implementation, subproofs are not enclosed in curly braces.
-  #^ Instead, they are indented like Python code.
-  # <indent> ::= "\t" # tab
-  # <hypothesis0> ::= <line>
-  # <line_annotated> ::= <line_num> "." (<formula> <ann> "\n" | <comment> | <blank>)
-  # <ann> ::= <rule_of_inference> <premise>
-  # <premise> ::= { <node_identifier> "," }
-  # <node_identifier> ::= <numeral> | <numeral> "-" <numeral>
-  # <rule_of_inference> ::= "." <conn> ("intro" | "elim") | "repeat" | "LEM"
-  # <conn> ::= "bot" | "not" | "and" | "or" | "imp" | "iff"
-  # <numeral> ::= [1-9] { [0-9] }
-  #endregion grammar
        
   def proof(self) -> ProofNode:
     children = []
@@ -411,6 +407,8 @@ class ProofParser:
 
 def get_str_li(proof_str: str, tabsize: int) -> List[str]:
   """
+  This is a preprocessing function for parse_fitch().
+
   Convert proof_str to a list of strings, where the subproofs are
   indicated by double brace pairs.
 
@@ -470,6 +468,8 @@ def get_str_li(proof_str: str, tabsize: int) -> List[str]:
   return str_li_ret
 
 def print_lines(lines: List[str]) -> None:
+  """ This is a test driver function for get_str_li().
+      Print lines with indentation. """
   level = 1
   for str in lines:
     if str == "}}":
@@ -486,6 +486,7 @@ def parse_fitch(proof_str: str, tabsize: int = 2) -> ProofNode:
   #^ each element of the list corresponds to a line of the proof
   parser = ProofParser(lines, tabsize)
   proof_node = parser.proof()
+  proof_node.build_index()
   if parser.level != 1:
     raise ValueError("parse_fitch(): parsing ended with non-ground level")
   return proof_node
