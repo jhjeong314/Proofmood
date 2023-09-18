@@ -10,9 +10,10 @@ class Formula:
       else:
         self.ast = input
       if self.ast.type == 'term':
-        str_infix = (str if isinstance(input, str) 
+        str_infix = (input if isinstance(input, str) 
           else input.build_infix('text'))
-        print(f"Input \"{str_infix}\" is a term, not a formula.")
+        raise ValueError(f"Formula.init(): Input \"{str_infix}\" is a term, \
+                           not a formula.")
     except ValueError as e:
       print(f"ValueError: {e}")
     except SyntaxError as e:

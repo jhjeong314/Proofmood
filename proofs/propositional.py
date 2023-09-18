@@ -1,79 +1,211 @@
 #region 0 
-from typing import List, Tuple, Any
+from typing import List, Tuple, Dict, Set, Any
 import re
 import sys
 sys.path.append('/Users/jooheejeong/Documents/Work/Proofmood/logical_formulas')
 from first_order_logic_parse import *
 from truth_table import * 
+from enum import Enum
 
-# line number = 1, 2, 3, ..
-CONN_LIST = ['bot', 'neg', 'and', 'or', 'imp', 'iff']
+class Connective(Enum):
+  BOT = 'bot'
+  NOT = 'not'
+  AND = 'and'
+  OR = 'or'  
+  IMP = 'imp'
+  IFF = 'iff'
+
+class RuleInfer(Enum):
+  BOT_INTRO = 1
+  BOT_ELIM = 2
+  NOT_INTRO = 3
+  NOT_ELIM = 4
+  AND_INTRO = 5
+  AND_ELIM = 6
+  OR_INTRO = 7
+  OR_ELIM = 8
+  IMP_INTRO = 9
+  IMP_ELIM = 10
+  IFF_INTRO = 11
+  IFF_ELIM = 12
+  REPEAT = 13
+  LEM = 14
+  HYP = 15
+
+CONN_LIST = [conn.value for conn in Connective]
 INTRO_ELIM = ['intro', 'elim']
 RULES_AUX = ['repeat', 'LEM', 'hyp']
 VERT = '│'
 PROVES = '├─'
 TAB = '\t'
-
-def ge_n(li: List[bool], n: int) -> bool:
-  # test if there are at least n True in li
-  count = 0
-  for i in li:
-    if i:
-      count += 1
-      if count >= n:
-        return True
-  return False
-
-def exists(li: List[bool]) -> bool:
-  # test if there is at least one True in li
-  # the same as any(li)
-  return ge_n(li, 1)
-
-def ge2(li: List[bool]) -> bool:
-  # test if there are at least 2 True in li
-  return ge_n(li, 2)
-
-def eq_n(li: List[bool], n: int) -> bool:
-  # test if there are exactly n True in li
-  count = 0
-  for i in li:
-    if i:
-      count += 1
-      if count > n:
-        return False
-  return count == n
-
-def unique(li: List[bool]) -> bool:
-  # test if there is only one True in li
-  return eq_n(li, 1)
-
-def word_in_str(word_li: List[str], text: str) -> int:
-  # Test if there exists a word in word_li occurring in text.
-  # If negative, return -1.
-  # If positive, return the index of the first occurrence of the 
-  # word in word_li.
-  import re
-
-  word_li_dot = [r"\." + word for word in word_li]
-  my_re = r"\b" +'|'.join(word_li_dot) + r"\b"
-  m = re.search(my_re, text)
-  if m is None:
-    return -1
-  else:
-    s = m.start()
-    e = m.end()
-    if (s == 0 or text[s-1] in [' ', '\t']) and \
-       (e == len(text) or text[e] in [' ', '\t']):
-      return s
-    else:
-      return -1
-
 #endregion 0
+
+class FormulaProp(Formula):
+  def __init__(self, input: str | Node):
+        super().__init__(input)
+
+  def is_fmla_type(self, fmla_type: Connective) -> bool:
+    return self.ast.token.value == fmla_type.value
+  
+  def get_kid_node1(self) -> Node:
+    """ Get the kid node of self, which is a negation formula. """
+    assert self.is_fmla_type(Connective.NOT), \
+            "FormulaProp.get_kid_node1(): not negation formula"
+    return self.ast.children[0]
+
+  def get_kid_node2(self) -> Tuple[Node, Node]:
+    """ Get the kids of self, whose root is a binary connective. """
+    root_token = self.ast.token
+    assert root_token.value in CONN_LIST and root_token.arity ==2, \
+            "FormulaProp.get_kid_node2(): not binary connective formula" 
+    return (self.ast.children[0], self.ast.children[1])
+
+  def verified_by(self, rule_inf: RuleInfer, premise: List[Node] = []) \
+      -> bool: 
+    """ Test if self is verified from (rule_inf, premise).
+        If a subproof need be a member of premise, then use the formula 
+        A imp B where A is the hypothesis and B is the last formula 
+        of the subproof.
+      """
+    match rule_inf:
+      case RuleInfer.BOT_INTRO:
+        # return true iff self is bot and 
+        # two premises are negations of each other
+        if self.ast.token.value != 'bot' or len(premise) != 2:
+          return  False
+        not_i = 0 if premise[0].token.value == 'not' else 1
+        not_prem = premise[not_i]
+        other_prem = premise[1 - not_i]
+        return not_prem.children[0] == other_prem
+      case RuleInfer.BOT_ELIM:
+        # return true iff the only premise is bot
+        # self can be any formula
+        return len(premise) == 1 and premise[0].token.value == 'bot'
+      case RuleInfer.NOT_INTRO:
+        # from the only premise A imp bot, infer not A
+        if len(premise) != 1 or not self.is_fmla_type(Connective.NOT):
+          return  False
+        prem = FormulaProp(premise[0])
+        if prem.is_fmla_type(Connective.IMP):
+          left, right = prem.get_kid_node2()
+          return left == self.get_kid_node1() and right.token.value == 'bot'
+        else:
+          return False
+      case RuleInfer.NOT_ELIM:
+        # from the only premise not A imp bot, infer A
+        # This rule is usually called 'proof by contradiction' or
+        # 'reductio ad absurdum' or double negation elimination,
+        # and prohibited in inuitionistic logic.
+        if len(premise) != 1:
+          return  False
+        prem = FormulaProp(premise[0])
+        if prem.is_fmla_type(Connective.IMP):
+          left, right = prem.get_kid_node2()
+          left_fmla = FormulaProp(left)
+          return left_fmla.is_fmla_type(Connective.NOT) and \
+                 self.ast == left_fmla.get_kid_node1() and \
+                 right.token.value == 'bot'
+        else:
+          return False
+      case RuleInfer.AND_INTRO:
+        # return true iff self is A and B
+        # and the two premises are [A, B] or [B, A].
+        if not self.is_fmla_type(Connective.AND) or len(premise) != 2:
+          return  False
+        left, right = self.get_kid_node2()
+        return (premise[0] == left and premise[1] == right) or \
+               (premise[0] == right and premise[1] == left)
+      case RuleInfer.AND_ELIM:
+        # return true iff prem is A and B and self is A or self is B
+        if len(premise) != 1:
+          return  False
+        prem_fmla = FormulaProp(premise[0])
+        left, right = prem_fmla.get_kid_node2()
+        return (self.ast == left or self.ast == right) and \
+                prem_fmla.is_fmla_type(Connective.AND)
+      case RuleInfer.OR_INTRO:
+        # from A, infer (A or B) or (B or A)
+        if len(premise) != 1 or not self.is_fmla_type(Connective.OR):
+          return  False
+        left, right = self.get_kid_node2()
+        return premise[0] == left or premise[0] == right
+      case RuleInfer.OR_ELIM:
+        pass
+      case RuleInfer.IMP_INTRO:
+        # from A imp B, infer A imp B
+        # This rule looks silly because subproof premise must be 
+        # converted to an implication formula
+        return len(premise) == 1 and premise[0] == self.ast \
+               and self.is_fmla_type(Connective.IMP)
+      case RuleInfer.IMP_ELIM: # modus ponens
+        if len(premise) != 2:
+          return  False
+        longer_i = 0 if premise[0].longer_than(premise[1]) else 1
+        longer_prem = premise[longer_i]
+        shorter_prem = premise[1 - longer_i]
+        longer_fmla = FormulaProp(longer_prem)
+        if longer_fmla.is_fmla_type(Connective.IMP):
+          left, right = longer_fmla.get_kid_node2()
+          if left == shorter_prem and right == self.ast:
+            return True
+        return False
+      case RuleInfer.IFF_INTRO:
+        # from (A imp B) and (B imp A), infer A iff B
+        if len(premise) != 2 or not self.is_fmla_type(Connective.IFF):
+          return False
+        prem1_fmla = FormulaProp(premise[0])
+        prem2_fmla = FormulaProp(premise[1])
+        if prem1_fmla.is_fmla_type(Connective.IMP) and \
+           prem2_fmla.is_fmla_type(Connective.IMP):
+          left1, right1 = prem1_fmla.get_kid_node2()
+          left2, right2 = prem2_fmla.get_kid_node2()
+          left, right = self.get_kid_node2()
+          return (left1 == right2 and right1 == left2) and \
+                 ((left == left1 and right == right1) or \
+                  (left == left2 and right == right2))
+        else:
+          return False
+      case RuleInfer.IFF_ELIM:
+        # from (A iff B) and A, infer B, and 
+        # from (A iff B) and B, infer A
+        if len(premise) != 2:
+          return False
+        longer_i = 0 if premise[0].longer_than(premise[1]) else 1
+        longer_prem = premise[longer_i]
+        shorter_prem = premise[1 - longer_i]
+        longer_fmla = FormulaProp(longer_prem)
+        if longer_fmla.is_fmla_type(Connective.IFF):
+          left, right = longer_fmla.get_kid_node2()
+          if (left == shorter_prem and right == self.ast) or \
+             (right == shorter_prem and left == self.ast):
+            return True
+        return False
+      case RuleInfer.REPEAT:
+        # return true iff self is identical to the only premise
+        return len(premise) == 1 and premise[0] == self.ast
+      case RuleInfer.LEM:
+        # return true iff self is of the form A or not A
+        # and premise is empty
+        if premise or not self.is_fmla_type(Connective.OR):
+          return False
+        kids = self.ast.children
+        longer_i = 0 if kids[0].longer_than(kids[1]) else 1
+        longer_kid = kids[longer_i]
+        shorter_kid = kids[1 - longer_i]
+        return longer_kid.token.value == 'not' and \
+          longer_kid.children[0] == shorter_kid
+      case RuleInfer.HYP:
+        # We can assume any formula as a hypothesis
+        # In other words, hypotheses do not need verification.
+        return not premise
+      case _:
+        raise ValueError("FormulaProp.verified(): wrong rule_inf")
+    return True # type checker needs this
+  # end of class FormulaProp
 
 class Ann: 
   """Annotation of a line of a proof tree"""
   def __init__(self, input_str: str):
-    """input_str is a white-space stripped string."""
     self.input_str = input_str
     self.rule = None # 'imp elim' | .. | 'ELM' 
     self.premise = None # [node_code,.. , ] 
@@ -299,30 +431,7 @@ class ProofNode:
     # The following 3 attributes are set by the build_index() method.
     self.index = None # type: List[int] | None
     self.line_num = None # type: str | None # e.g., '4', '6-10'
-
-  def build_index(self, p_index: List[int] = [], i: int = 0, 
-                  l_num: int = 1) -> int:
-    """ Set self.index and self.line_num.
-        Automatically called by the parse_fitch() function.
-
-        p_index means the parent's index. 
-        i is the (list)index of self in the parent's children list. 
-        l_num is the line number to be given to self for leaf nodes.
-        Return value is the increment of line number for the next leaf.
-        self.index is set from the root to the leaves.
-        self.line_num is set from the leaves to the root. 
-    """
-    self.index = p_index + [i]
-    if self.children: # subproof case
-      line_inc = 0 # tentative return value
-      for i, kid in enumerate(self.children):
-        line_inc += kid.build_index(self.index, i, l_num + line_inc)
-      self.line_num = f"{l_num}-{l_num + line_inc - 1}"
-    else: # leaf node case
-      self.line_num = str(l_num)
-      line_inc = 1
-
-    return line_inc
+    self.index_dict = None # type: Dict[str, List[int]] | None
 
   def __str__(self) -> str:
     return self.build_fitch_text()
@@ -359,7 +468,94 @@ class ProofNode:
     """ Build a Fitch-style proof latex source. """
     raise NotImplementedError("build_fitch_latex() not implemented")
   
-  # end of class Proof
+  def build_index(self, p_index: List[int] = [], i: int = 0, 
+                  l_num: int = 1) -> int:
+    """ Recursively set self.index and self.line_num.
+        Automatically called by the parse_fitch() function, where
+        self is the root of the whole proof.
+
+        p_index means the parent's (tree)index(: List[int]). 
+        i is the (list)index(: int) of self in the parent's children list. 
+        l_num is the line number to be given to self for leaf nodes.
+        Return value is the increment of line number for the next leaf.
+        self.index is recursively set from the root to the leaves.
+        self.line_num is recursively set from the leaves to the root. 
+    """
+    self.index = p_index + [i]
+    if self.children: # subproof case
+      line_inc = 0 # tentative return value
+      for i, kid in enumerate(self.children):
+        line_inc += kid.build_index(self.index, i, l_num + line_inc)
+      self.line_num = f"{l_num}-{l_num + line_inc - 1}"
+    else: # leaf node case
+      self.line_num = str(l_num)
+      line_inc = 1
+
+    return line_inc
+  
+  def build_index_dict(self) -> Dict[str, List[int]]:
+    """ Recursively build a dictionary with line numbers as keys and 
+        corresponding tree indices as values.
+        Automatically called by the parse_fitch() function after build_index()
+        has been called, where self is the root of the whole proof.
+        The Return value is saved as proof_root.index_dict.
+    """
+    ret_dict = {}
+    ret_dict[self.line_num] = self.index
+    for kid in self.children:
+      ret_dict.update(kid.build_index_dict())
+    return ret_dict
+    
+  def get_node(self, node_code: List[int] | str):
+    """ Get and return the node(: ProofNode) specified by node_code, which 
+        is either a tree index(: List[int]) or a line number(:str).
+        self must be the root of the whole proof. """
+    assert self.index_dict is not None, "get_node(): index_dict is None"
+    node = self
+    if isinstance(node_code, str):
+      index = self.index_dict.get(node_code)
+      if index is not None:
+        node = self.get_node(index) 
+      else:
+        raise ValueError(f"get_node(): line number {node_code} not found")
+    else:
+      if node_code == self.index:
+        node = self
+      else:
+        for i in node_code[1:]:
+          node = node.children[i]
+    return node
+  
+  def toggle_node_code(self, node_code: List[int] | str) -> str | List[int]:
+    """ Toggle node_code type between index and line number. """
+    node = self.get_node(node_code)
+    if node is None:
+      raise ValueError("toggle_node_code(): node not found for " \
+                       f"{node_code}")
+    if isinstance(node_code, str):
+      return node.index # type: ignore
+    else:
+      return node.line_num # type: ignore
+    
+  def is_earlier(self, node_code1, node_code2) -> bool:
+    """ Test if node_code1 is earlier than node_code2, which is equivalent
+        to saying that node_code1 can be used as a premise of node_code2. """
+    assert self.index_dict is not None, "get_node(): index_dict is None"
+    
+    # make sure that both node_code1 and node_code2 are of the type List[int]
+    node_code1 = node_code1 if not isinstance(node_code1, str) \
+                  else self.index_dict[node_code1]
+    node_code2 = node_code2 if not isinstance(node_code2, str) \
+                  else self.index_dict[node_code2]
+    
+    # This order is somewhat unusual but very important.
+    # It is at the heart of the Fitch proof system.    
+    len1 = len(node_code1)
+    return len1 <= len(node_code2) and \
+           node_code1[:-1] == node_code2[:len1 - 1] and \
+           node_code1[-1] < node_code2[len1 - 1]
+  
+  # end of class ProofNode
 
 class ProofParser:
   def __init__(self, lines: List[str], tabsize: int):
@@ -405,6 +601,73 @@ class ProofParser:
   
   # end of class ProofParser
 
+def parse_fitch(proof_str: str, tabsize: int = 2) -> ProofNode:  
+  lines = get_str_li(proof_str, tabsize) 
+  #^ list of strings, where the subproofs are indicated by double brace pairs
+  #^ each element of the list corresponds to a line of the proof
+  parser = ProofParser(lines, tabsize)
+  proof_node = parser.proof()
+  proof_node.build_index()
+  proof_node.index_dict = proof_node.build_index_dict()
+  if parser.level != 1:
+    raise ValueError("parse_fitch(): parsing ended with non-ground level")
+  return proof_node
+
+#region util functions
+def ge_n(li: List[bool], n: int) -> bool:
+  # test if there are at least n True in li
+  count = 0
+  for i in li:
+    if i:
+      count += 1
+      if count >= n:
+        return True
+  return False
+
+def exists(li: List[bool]) -> bool:
+  # test if there is at least one True in li
+  # the same as any(li)
+  return ge_n(li, 1)
+
+def ge2(li: List[bool]) -> bool:
+  # test if there are at least 2 True in li
+  return ge_n(li, 2)
+
+def eq_n(li: List[bool], n: int) -> bool:
+  # test if there are exactly n True in li
+  count = 0
+  for i in li:
+    if i:
+      count += 1
+      if count > n:
+        return False
+  return count == n
+
+def unique(li: List[bool]) -> bool:
+  # test if there is only one True in li
+  return eq_n(li, 1)
+
+def word_in_str(word_li: List[str], text: str) -> int:
+  # Test if there exists a word in word_li occurring in text.
+  # If negative, return -1.
+  # If positive, return the index of the first occurrence of the 
+  # word in word_li.
+  import re
+
+  word_li_dot = [r"\." + word for word in word_li]
+  my_re = r"\b" +'|'.join(word_li_dot) + r"\b"
+  m = re.search(my_re, text)
+  if m is None:
+    return -1
+  else:
+    s = m.start()
+    e = m.end()
+    if (s == 0 or text[s-1] in [' ', '\t']) and \
+       (e == len(text) or text[e] in [' ', '\t']):
+      return s
+    else:
+      return -1
+
 def get_str_li(proof_str: str, tabsize: int) -> List[str]:
   """
   This is a preprocessing function for parse_fitch().
@@ -419,6 +682,8 @@ def get_str_li(proof_str: str, tabsize: int) -> List[str]:
   2. Remove the leading line number if any from each line.
   3. From the change of level between lines, convert indentation to 
     double brace pairs to indicate subproofs.
+  4. When there is a change of line type from conclusion to hyp, add
+    ["}}", "{{"] to the list.
   """
   # split proof_str into lines
   str_li = proof_str.split('\n') # this will be converted to str_li_ret
@@ -433,8 +698,10 @@ def get_str_li(proof_str: str, tabsize: int) -> List[str]:
 
   str_li_ret = [] # this will be returned
   TAB_sp = ' ' * tabsize
-  pat = re.compile(r'\d+\.\s*') # for matching line numbers
+  pat_num = re.compile(r'\d+\.\s*') # for matching line numbers
+  pat_hyp = re.compile(r'\s+\.hyp$') # for matching hypotheses
   level0 = 1
+  is_conclusion = False
   proves_str = PROVES if VERT_used else 'proves'
   for str in str_li:
     if VERT_used:
@@ -453,8 +720,8 @@ def get_str_li(proof_str: str, tabsize: int) -> List[str]:
           level += 1
         else:
           break
-    if (m := pat.search(str)):
-      str = str[m.end():]
+    if (m := pat_num.search(str)):
+      str = str[m.end():] # remove leading line number if any
     if str.find(proves_str) == -1:
       if level > level0:
         str_li_ret.append("{{")
@@ -462,8 +729,20 @@ def get_str_li(proof_str: str, tabsize: int) -> List[str]:
         while level < level0:
           str_li_ret.append("}}")
           level0 -= 1
+      else: # level == level0 case
+        # If the previous line is a conclusion and the current line
+        # is a hypothesis, then add ["}}", "{{"].
+        if is_conclusion:
+          if pat_hyp.search(str):
+            str_li_ret += ["}}","{{"]
+            is_conclusion = False
+        else: # is_hyp
+          if not pat_hyp.search(str):
+            is_conclusion = True
       str_li_ret.append(str)
       level0 = level
+    else: # proves_str is ignored
+      pass
 
   return str_li_ret
 
@@ -479,14 +758,4 @@ def print_lines(lines: List[str]) -> None:
       print(f"{('  ' * (level - 1))}{str}")
     if str == "{{":
       level += 1
-
-def parse_fitch(proof_str: str, tabsize: int = 2) -> ProofNode:  
-  lines = get_str_li(proof_str, tabsize) 
-  #^ list of strings, where the subproofs are indicated by double brace pairs
-  #^ each element of the list corresponds to a line of the proof
-  parser = ProofParser(lines, tabsize)
-  proof_node = parser.proof()
-  proof_node.build_index()
-  if parser.level != 1:
-    raise ValueError("parse_fitch(): parsing ended with non-ground level")
-  return proof_node
+#endregion util functions

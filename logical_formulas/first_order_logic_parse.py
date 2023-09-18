@@ -383,6 +383,14 @@ class Node:
     infix_self = self.build_infix('text')
     infix_other = other.build_infix('text')
     return infix_self == infix_other
+  
+  def longer_than(self, other):
+    """ Test whether the infix string of self is longer than that of other.
+      This method is used as a pretest for whether self is a subformula of 
+      other. """
+    infix_self = self.build_infix('text')
+    infix_other = other.build_infix('text')
+    return len(infix_self) > len(infix_other)
 
   LATEX_DICT = dict(
       [("not", r"\neg"), ("and", r"\wedge"), ("or", r"\vee"),
