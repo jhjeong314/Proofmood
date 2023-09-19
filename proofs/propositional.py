@@ -16,24 +16,24 @@ class Connective(Enum):
   IFF = 'iff'
 
 class RuleInfer(Enum):
-  BOT_INTRO = 1
-  BOT_ELIM = 2
-  NOT_INTRO = 3
-  NOT_ELIM = 4
-  AND_INTRO = 5
-  AND_ELIM = 6
-  OR_INTRO = 7
-  OR_ELIM = 8
-  IMP_INTRO = 9
-  IMP_ELIM = 10
-  IFF_INTRO = 11
-  IFF_ELIM = 12
-  REPEAT = 13
-  LEM = 14
-  HYP = 15
+  BOT_INTRO = "bot intro"
+  BOT_ELIM = "bot elim"
+  NOT_INTRO = "not intro"
+  NOT_ELIM = "not elim"
+  AND_INTRO = "and intro"
+  AND_ELIM = "and elim"
+  OR_INTRO = "or intro"
+  OR_ELIM = "or elim"
+  IMP_INTRO = "imp intro"
+  IMP_ELIM = "imp elim"
+  IFF_INTRO = "iff intro"
+  IFF_ELIM = "iff elim"
+  REPEAT = "repeat"
+  LEM = "LEM"
+  HYP = "hyp"
 
 CONN_LIST = [conn.value for conn in Connective]
-INTRO_ELIM = ['intro', 'elim']
+INTRO_OR_ELIM = ['intro', 'elim']
 RULES_AUX = ['repeat', 'LEM', 'hyp']
 VERT = '│'
 PROVES = '├─'
@@ -62,7 +62,7 @@ class FormulaProp(Formula):
 
   def verified_by(self, rule_inf: RuleInfer, premise: List[Node] = []) \
       -> bool: 
-    """ Test if self is verified from (rule_inf, premise).
+    """ Test if self is verified by (rule_inf, premise).
         If a subproof need be a member of premise, then use the formula 
         A imp B where A is the hypothesis and B is the last formula 
         of the subproof.
@@ -195,21 +195,22 @@ class FormulaProp(Formula):
         return longer_kid.token.value == 'not' and \
           longer_kid.children[0] == shorter_kid
       case RuleInfer.HYP:
-        # We can assume any formula as a hypothesis
+        # We can assume any formula as a hypothesis.
         # In other words, hypotheses do not need verification.
         return not premise
       case _:
         raise ValueError("FormulaProp.verified(): wrong rule_inf")
     return True # type checker needs this
+  
   # end of class FormulaProp
 
 class Ann: 
   """Annotation of a line of a proof tree"""
   def __init__(self, input_str: str):
     self.input_str = input_str
-    self.rule = None # 'imp elim' | .. | 'ELM' 
+    self.rule = None # RuleInfer type
     self.premise = None # [node_code,.. , ] 
-                        # node_code ::= ln: int | (ln_s: int, ln_e: int)
+                        # node_code ::= ln: digit | ln_s-ln_e: str
                         # ln = line number
     self.parse()
 
@@ -217,60 +218,18 @@ class Ann:
     if self.rule is None:
       return ''
     else:
-      premise_str = ''
-      if self.premise:
-        for i, p in enumerate(self.premise):
-          premise_str += ',' if i > 0 else ' '
-          if isinstance(p, int):
-            premise_str += f"{p}"
-          else:
-            premise_str += f"{p[0]}-{p[1]}"
-      return f"{self.rule}{premise_str}"
+      premise_str = ','.join(self.premise) if self.premise else ''
+      return f"{self.rule.value} {premise_str}"
     
   def build_str(self) -> str:
     if self.rule is None:
       return ''
     else:
-      return (f"rule: {self.rule}\n" 
-              f"premise: {str(self.premise)}")
+      return (f"rule: {self.rule.value}\n" 
+              f"premise: {self.premise}")
 
   def parse(self) -> None:
     """From self.input_str, set self.rule and self.premise."""
-    #region util functions
-    def is_node_id(s: str) -> bool:
-      """test if s is of the form '12' | '3-8'"""
-      if Token.is_nat(s): # type: ignore
-        return True
-      else:
-        s_li = s.split('-')
-        if len(s_li) == 2 and \
-            Token.is_nat(s_li[0]) and Token.is_nat(s_li[1]): # type: ignore
-          return True
-        else:
-          return False
-        
-    def bFmla(s: str) -> bool:
-      """test if s is a node id for a formula"""
-      return Token.is_nat(s) # type: ignore
-    
-    def bSubproof(s: str) -> bool:
-      """test if s is a node id for a subproof"""
-      return is_node_id(s) and '-' in s
-    
-    def premise2int(num_s_li: List[str]) -> List[int | Tuple[int, int]]:
-      """convert a list of node ids to a list of ints and 2-tuples of ints"""
-      ret_li = []
-      for num_s in num_s_li:
-        pos = num_s.find('-')
-        if pos == -1: # num_s is a node id for a formula
-          ret_li.append(int(num_s))
-        else: # num_s is a node id for a subproof
-          ln_s = int(num_s[:pos])
-          ln_e = int(num_s[pos+1:])
-          ret_li.append((ln_s, ln_e))
-      return ret_li
-    #endregion util functions
-
     ann_s = self.input_str
     err_msg = f'Annotation string "{ann_s}" is not valid.'
     match = re.search(r'\d', ann_s) # find the 1st digit
@@ -285,13 +244,14 @@ class Ann:
       if len(str_li) == 1:
         s0 = num_s_li[0]
         if str_li[0] == 'repeat' and len(num_s_li) == 1 and bFmla(s0):
-          self.rule = 'repeat'
-          self.premise = [int(s0)]
+          self.rule = RuleInfer.REPEAT
+          self.premise = [s0]
         else:
           raise ValueError("1: " + err_msg)
       elif len(str_li) == 2:
         conn = str_li[0]
-        r_type = str_li[1] # rule type
+        r_type = str_li[1] # rule type ::= 'intro' | 'elim'
+        rule_inf_str = conn + ' ' + r_type
         n_prem = len(num_s_li)
         if n_prem > 0:
           id1 = num_s_li[0]
@@ -299,9 +259,9 @@ class Ann:
           id2 = num_s_li[1]
         if n_prem > 3 or n_prem == 0:
           raise ValueError(err_msg + "\n\tToo many or too few premises.")
-        if conn in CONN_LIST and r_type in INTRO_ELIM:
-          self.rule = conn + ' ' + r_type
-          self.premise = premise2int(num_s_li) # tentatively
+        if conn in CONN_LIST and r_type in INTRO_OR_ELIM:
+          self.rule = RuleInfer(rule_inf_str)
+          self.premise = num_s_li
           bOK = True # tentatively
           if conn == 'bot': 
             if r_type == 'intro':
@@ -334,13 +294,13 @@ class Ann:
               bOK = n_prem == 2 and bFmla(id1) and bFmla(id2) # type: ignore
           if not bOK:
             raise ValueError('2: ' + err_msg)
-          self.premise = premise2int(num_s_li)
+          # self.premise = num_s_li
         else:
           raise ValueError('3: ' + err_msg)
       else:
         raise ValueError(f'4: ' + err_msg)
     elif ann_s in ['LEM', 'hyp']: # the only case where premise is empty
-      self.rule = ann_s
+      self.rule = RuleInfer(ann_s)
       self.premise = []
     else:
       raise ValueError('5: ' + err_msg)
@@ -363,15 +323,12 @@ class NodeLabel:
     self.formula = formula
     self.ann = ann
     self.is_hyp = None # type: bool | None
-    self.node_code = None
-    #^ node_code ::= ln: int | (ln_s: int, ln_e: int) | None
-    #^ ln = line number, (ln_s, ln_e) is for subproofs
     if self.type != 'formula':
       pass
     elif self.line != '':
       self.parse_line()
     elif isinstance(formula, Formula) and isinstance(ann, Ann):
-      self.is_hyp = ann.rule == 'hyp'
+      self.is_hyp = ann.rule == RuleInfer.HYP
     else:
       raise ValueError("NodeLabel.init(): Wrong arguments")
 
@@ -396,7 +353,7 @@ class NodeLabel:
     # So self.ann is either an Ann object or a string or None.
     try:
       self.ann = Ann(ann_part)
-      self.is_hyp = self.ann.rule == 'hyp'
+      self.is_hyp = self.ann.rule == RuleInfer.HYP
       # isinstance(self.ann, Ann)
     except Exception as e:
       # error, but keep it anyway
@@ -424,6 +381,8 @@ class NodeLabel:
   # end of class NodeLabel
 
 class ProofNode: 
+  # In order to get node: Node from p_node: ProofNode, use
+  #   node = p_node.label.formula.ast
   def __init__(self, label: NodeLabel, children=None):
     self.label = label
     self.children = children if children else [] 
@@ -506,29 +465,30 @@ class ProofNode:
       ret_dict.update(kid.build_index_dict())
     return ret_dict
     
-  def get_node(self, node_code: List[int] | str):
-    """ Get and return the node(: ProofNode) specified by node_code, which 
+  def get_p_node(self, node_code: List[int] | str): # ProofNode type
+    """ Get and return the p_node specified by node_code, which 
         is either a tree index(: List[int]) or a line number(:str).
+        node_code of the form 's-e' is accepted too.
         self must be the root of the whole proof. """
-    assert self.index_dict is not None, "get_node(): index_dict is None"
-    node = self
+    assert self.index_dict is not None, "get_p_node(): index_dict is None"
+    p_node = self
     if isinstance(node_code, str):
       index = self.index_dict.get(node_code)
       if index is not None:
-        node = self.get_node(index) 
+        p_node = self.get_p_node(index) 
       else:
-        raise ValueError(f"get_node(): line number {node_code} not found")
+        raise ValueError(f"get_p_node(): line number {node_code} not found")
     else:
       if node_code == self.index:
-        node = self
+        p_node = self
       else:
         for i in node_code[1:]:
-          node = node.children[i]
-    return node
+          p_node = p_node.children[i]
+    return p_node 
   
   def toggle_node_code(self, node_code: List[int] | str) -> str | List[int]:
     """ Toggle node_code type between index and line number. """
-    node = self.get_node(node_code)
+    node = self.get_p_node(node_code)
     if node is None:
       raise ValueError("toggle_node_code(): node not found for " \
                        f"{node_code}")
@@ -540,7 +500,7 @@ class ProofNode:
   def is_earlier(self, node_code1, node_code2) -> bool:
     """ Test if node_code1 is earlier than node_code2, which is equivalent
         to saying that node_code1 can be used as a premise of node_code2. """
-    assert self.index_dict is not None, "get_node(): index_dict is None"
+    assert self.index_dict is not None, "get_p_node(): index_dict is None"
     
     # make sure that both node_code1 and node_code2 are of the type List[int]
     node_code1 = node_code1 if not isinstance(node_code1, str) \
@@ -554,6 +514,69 @@ class ProofNode:
     return len1 <= len(node_code2) and \
            node_code1[:-1] == node_code2[:len1 - 1] and \
            node_code1[-1] < node_code2[len1 - 1]
+  
+  def verified_by(self, conc: str, rule_inf: RuleInfer, 
+                  premise: List[str] = []) -> bool:
+    """ Test if the conclusion with line number conc is verified by 
+        (rule_inf, premise). conc of the form 's-e' is not accepted.
+        self must be the root of the whole proof. """
+    assert bFmla(conc), f"verified_by(): conclusion='{conc}' is not accepted"
+    assert self.index_dict is not None, "verified_by(): index_dict is None"
+    p_node = self.get_p_node(conc) # ProofNode type
+    if p_node.label.is_hyp:
+      return True
+    else:
+      fmla = p_node.label.formula
+      assert isinstance(fmla, Formula)
+      conclusion = FormulaProp(fmla.ast)
+      premise_nodes = []
+      for p in premise:
+        if not self.is_earlier(p, conc):
+          return False
+        if bFmla(p):
+          fmla = self.get_p_node(p).label.formula
+          premise_nodes.append(fmla.ast) # type: ignore
+        else: # convert subproof to an implication formula
+          str_li = [str.strip() for str in p.split('-')]
+          s = str_li[0]
+          e = str_li[1]
+          node_s = self.get_p_node(s).label.formula.ast # type: ignore
+          node_e = self.get_p_node(e).label.formula.ast # type: ignore
+          conn = Token("imp")
+          node = Node(conn, [node_s, node_e])
+          premise_nodes.append(node)
+      return conclusion.verified_by(rule_inf, premise_nodes)
+    
+  def verified(self, conc: str) -> bool:
+    """ Test if the conclusion with line number conc is verified 
+        by its annotation.  conc of the form 's-e' is not accepted.
+        self must be the root of the whole proof. 
+    """
+    assert bFmla(conc), f"verified_by(): conclusion='{conc}' is not accepted"
+    assert self.index_dict is not None, "verified_by(): index_dict is None"
+    p_node = self.get_p_node(conc) # ProofNode type
+    ann = p_node.label.ann
+    if not isinstance(ann, Ann):
+      return False
+    else:
+      return self.verified_by(conc, ann.rule, ann.premise) # type: ignore
+    
+  def verified_all(self) -> bool:
+    """ Test if all conclusions are verified by their annotations.
+        self must be the root of the whole proof. """
+    assert self.index_dict is not None, "verified_by(): index_dict is None"
+    for node_code in self.index_dict:
+      if bSubproof(node_code):
+        continue
+      p_node = self.get_p_node(node_code) # ProofNode type
+      if (label := p_node.label).type == 'formula':
+        if label.is_hyp:
+          continue
+        if self.verified(node_code):
+          continue
+        else:
+          return False
+    return True
   
   # end of class ProofNode
 
@@ -647,8 +670,18 @@ def unique(li: List[bool]) -> bool:
   # test if there is only one True in li
   return eq_n(li, 1)
 
+def num_nodes(tree, opt='terminal') -> int:
+  # opt!='terminal' means count terminal nodes only
+  num = 0 if opt == 'terminal' else 1
+  for kid in tree.children:
+    if kid.children:
+      num += num_nodes(kid, opt)
+    else:
+      num += 1
+  return num
+
 def word_in_str(word_li: List[str], text: str) -> int:
-  # Test if there exists a word in word_li occurring in text.
+  # Test if there exists a member of word_li occurring in text.
   # If negative, return -1.
   # If positive, return the index of the first occurrence of the 
   # word in word_li.
@@ -758,4 +791,25 @@ def print_lines(lines: List[str]) -> None:
       print(f"{('  ' * (level - 1))}{str}")
     if str == "{{":
       level += 1
+
+def is_node_id(s: str) -> bool:
+  """test if s is of the form '12' | '3-8'"""
+  if Token.is_nat(s): # type: ignore
+    return True
+  else:
+    s_li = s.split('-')
+    if len(s_li) == 2 and \
+        Token.is_nat(s_li[0]) and Token.is_nat(s_li[1]): # type: ignore
+      return True
+    else:
+      return False
+    
+def bFmla(s: str) -> bool:
+  """test if s is a node id for a formula"""
+  return Token.is_nat(s) # type: ignore
+
+def bSubproof(s: str) -> bool:
+  """test if s is a node id for a subproof"""
+  return is_node_id(s) and '-' in s
+
 #endregion util functions
