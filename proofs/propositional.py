@@ -311,9 +311,12 @@ class NodeLabel:
   """label of a node of a proof tree (like a token)"""
   def __init__(self, type: str = 'subproof', line: str = '', 
                formula: Formula | None = None, ann: Ann | None = None):
-    """ type ::= 'subproof' | 'formula' | 'comment' | 'blank'
+    """ type ::= 'subproof' | 'formula' | 
+                 'comment.hypo' | 'blank.hypo' |
+                 'comment.conc' | 'blank.conc'
         For subproofs, there's not much we need to do.
-        The same is true for comments and blank lines.
+        For comments and blank lines, we only need to set self.is_hyp,
+          to indicate whether the line is in hypothesis or conclusion.
         For formulas, initialization is done in two ways:
           (1) from a string, and 
           (2) from a Formula object and an Ann object.
@@ -324,13 +327,13 @@ class NodeLabel:
     self.ann = ann
     self.is_hyp = None # type: bool | None
     if self.type != 'formula':
-      pass
+      self.is_hyp = self.type.endswith('.hypo')
     elif self.line != '':
       self.parse_line()
     elif isinstance(formula, Formula) and isinstance(ann, Ann):
       self.is_hyp = ann.rule == RuleInfer.HYP
     else:
-      raise ValueError("NodeLabel.init(): Wrong arguments")
+      raise ValueError("NodeLabel.init(): Wrong arguments for formula type.")
 
   def parse_line(self) -> None:
     """ Parse self.line and set self.formula, self.ann and self.is_hyp.
@@ -363,7 +366,7 @@ class NodeLabel:
   def __str__(self) -> str:
     if self.type == 'formula':
       return f"{self.formula}\t .{self.ann}"
-    else: # self.type == 'subproof' | 'comment' | 'blank'
+    else: # self.type == 'subproof' | 'comment.*' | 'blank.*'
       return self.line
     
   def build_str(self) -> str:
@@ -413,13 +416,15 @@ class ProofNode:
     b_hyp = True 
     level = len(self.index) if self.index else 0 # always >= 1
     for kid in self.children:
+      # When the line changes from hyp to non-hyp, insert '├─\n'.
       if b_hyp and not kid.label.is_hyp:
         b_hyp = False
         ret_str += VERT * (level - 1) + '├─\n'
-      if kid.label.type != 'subproof':
+      # Output the line for leaf nodes only.
+      if kid.label.type != 'subproof': # subproof is internal node
         line_str = f"{kid.label}"
         ret_str += VERT * level + f'{kid.line_num}. ' + line_str + '\n'
-      else:
+      else: # recursively call build_fitch_text() for subproofs
         ret_str += kid.build_fitch_text()
     return ret_str
 
@@ -610,10 +615,16 @@ class ProofParser:
             raise ValueError("ProofParser.proof(): below ground level")
           self.advance()
           break
-        elif line_str == '':
-          label_type = 'blank'
-        elif line_str.lstrip().startswith('#'):
-          label_type = 'comment'
+        if (is_hypo:=line_str.endswith('.hypo_')) or \
+           (is_conc:=line_str.endswith('.conc_')):
+          line_str = line_str[:-6]
+          suffix = '.hypo' if is_hypo else '.conc'
+          if line_str == '' or line_str.isspace():
+            label_type = 'blank' + suffix
+          elif line_str.lstrip().startswith('#'):
+            label_type = 'comment' + suffix
+          else:
+            raise ValueError("ProofParser.proof(): .hypo_ .conc_ error")
         else:
           label_type = 'formula'
         label = NodeLabel(label_type, line_str)
@@ -717,6 +728,11 @@ def get_str_li(proof_str: str, tabsize: int) -> List[str]:
     double brace pairs to indicate subproofs.
   4. When there is a change of line type from conclusion to hyp, add
     ["}}", "{{"] to the list.
+
+  Indentation is important for blank lines and comments too. So we
+  must be very careful about them. Some editors may automatically
+  remove white spaces of blank lines. So it may be a good idea to prefix
+  a # character to each blank line.
   """
   # split proof_str into lines
   str_li = proof_str.split('\n') # this will be converted to str_li_ret
@@ -725,7 +741,7 @@ def get_str_li(proof_str: str, tabsize: int) -> List[str]:
     str_li = str_li[1:]
   if len(str_li[-1]) == 0 or str_li[-1].isspace():
     str_li = str_li[:-1]
-
+  
   # determine whether VERT was used for indentation
   VERT_used = str_li[0].startswith(VERT)
 
@@ -734,9 +750,11 @@ def get_str_li(proof_str: str, tabsize: int) -> List[str]:
   pat_num = re.compile(r'\d+\.\s*') # for matching line numbers
   pat_hyp = re.compile(r'\s+\.hyp$') # for matching hypotheses
   level0 = 1
-  is_conclusion = False
   proves_str = PROVES if VERT_used else 'proves'
+  before_proves = True # current line is before the proves_str
   for str in str_li:
+    # get the level of the current line, and
+    # remove the indentation part from the current line
     if VERT_used:
       level = 0
       while str.startswith(VERT):
@@ -753,29 +771,50 @@ def get_str_li(proof_str: str, tabsize: int) -> List[str]:
           level += 1
         else:
           break
+    # remove leading line number if any
     if (m := pat_num.search(str)):
-      str = str[m.end():] # remove leading line number if any
-    if str.find(proves_str) == -1:
+      str = str[m.end():] 
+      #^ So the line number has no effect at all.
+      #^ The parser will assign line numbers automatically.
+      #^ It is used only for the user's convenience.
+    is_blank = (str == '' or str.isspace())
+    is_fmla = not (str.startswith('#') or is_blank)
+    if str.find(proves_str) != 0:
       if level > level0:
+        if before_proves:
+          raise ValueError("get_str_li(): before_proves but level increased\n"
+                           f"\tstr = '{str}'")
         str_li_ret.append("{{")
+        before_proves = True
       elif level < level0:
+        if before_proves:
+          raise ValueError("get_str_li(): before_proves but level decreased\n"
+                           f"\tstr = '{str}'")
         while level < level0:
           str_li_ret.append("}}")
           level0 -= 1
       else: # level == level0 case
-        # If the previous line is a conclusion and the current line
-        # is a hypothesis, then add ["}}", "{{"].
-        if is_conclusion:
-          if pat_hyp.search(str):
+        if before_proves:
+          if is_fmla and not pat_hyp.search(str):
+            raise ValueError("get_str_li(): before_proves but not is_hyp\n"
+                             f"\tstr = '{str}'") 
+        else: 
+          # If the previous line is a conclusion and the current line
+          # is a hypothesis, then add ["}}", "{{"].
+          if pat_hyp.search(str): # adjacent subproofs
             str_li_ret += ["}}","{{"]
-            is_conclusion = False
-        else: # is_hyp
-          if not pat_hyp.search(str):
-            is_conclusion = True
-      str_li_ret.append(str)
+            before_proves = True
+      if not is_fmla:
+        # attach info about before/after proves_str
+        suffix = '.hypo_' if before_proves else '.conc_'
+      else:
+        suffix = ''
+      str_li_ret.append(str + suffix)
       level0 = level
-    else: # proves_str is ignored
-      pass
+    else: 
+      if not before_proves:
+        raise ValueError("get_str_li(): proves_str in conclusion part")
+      before_proves = False
 
   return str_li_ret
 
