@@ -1,0 +1,62 @@
+%% proofmood.sty
+%  http://www.proofmood.com (version 1.02 - Jul 06, 2011)
+
+\RequirePackage{array,latexsym,amsmath,amsfonts,amssymb,ifthen}
+\RequirePackage[svgnames]{xcolor}
+
+\newenvironment{fitchproof}%
+	{\small\renewcommand{\arraystretch}{0.5}\setlength{\arraycolsep}{0.15em}%
+		\(\begin{array}{rlrll}}{\end{array}\)}
+
+% In many commands, the prefix "pm" stands for ProofMood.
+
+% left border
+\newcommand{\pmnl}{\rule{0ex}{2.5ex}\\[0.2ex]}   
+%^ next line. This is used for most lines.
+\newcommand{\pmvert}{\vline\hspace*{0.5em}}      % VERT │
+\newcommand{\pmproves}{\vline\raisebox{0.2ex}% 
+	{\rule{1.5em}{\arrayrulewidth}}} % ├─
+%^ In this case, \\ is used instead of \pmnl
+% Right after a subproof, we always add a line as follows
+% (to give some vertical spacing)
+% & \pmvert * level & & & \\
+
+\newcommand{\pnumb}[1]{#1.\;}
+%^ \pnumb is a macro for the line number
+\newcommand{\pform}[1]{#1\hspace*{1.5em}}
+%^ \pform is a macro for suffixing a formula with a space
+\newcommand{\pforms}[1]{#1\hspace*{0.8em}}
+%^ \pforms is a macro for suffixing a formula with a small space
+
+% Followings are check symbols.
+\newcommand{\chknull}{\makebox[3.0mm]{}} % empty box
+% Blue checkmark
+\newcommand{\chkch}{\textcolor{SteelBlue}{\text{\scriptsize\checkmark}}\;}
+% Red x
+\newcommand{\chkx}{\textcolor{Crimson}{\msf{x}\:}\;}
+% Gray x
+\newcommand{\chkxg}{\textcolor{DimGray}{\text{\textsf{x}}}\mskip9mu}
+
+% Connectives
+\newcommand{\pmbot}{\bot}
+\newcommand{\pmnot}{\neg}
+\newcommand{\pmand}{\wedge}
+\newcommand{\pmor}{\vee}
+\newcommand{\pmimp}{\rightarrow}
+\newcommand{\pmiff}{\leftrightarrow}
+% Rule of inference
+\newcommand{\infrul}[1]{\textcolor{DimGray}{\msf{#1}\hspace*{0.2em}}}
+%^ \infrul is a macro for an inference rule when the rule consists
+%^ of one word, e.g., repeat, LEM, hyp
+\newcommand{\infrule}[2]{\textcolor{DimGray}{\makebox[4mm][c]{$#1$}}%
+	\textcolor{DimGray}{\msf{#2}\hspace*{0.2em}}}
+%^ \infrule is a macro for an inference rule when the rule consists 
+%^ of two words, e.g., imp elem, and intro etc.
+% Premise '8', '8-12' etc.
+\newcommand{\infruleErr}[1]{\textcolor{Tomato}{\msf{#1}\hspace*{0.2em}}}
+\newcommand{\pmprem}[1]{\textcolor{DimGray}{\texttt{#1}}}
+
+\DeclareMathAlphabet{\msf}{OT1}{cmss}{m}{n}
+\newcommand{\pmusc}{\mskip-1mu\_\mskip.3mu} % underscore symbol
+\newcommand{\qv}[2]{#1\msf{#2}\mskip4mu{}}
+\newcommand{\qvs}[2]{#1\msf{#2}\mskip2mu{}}

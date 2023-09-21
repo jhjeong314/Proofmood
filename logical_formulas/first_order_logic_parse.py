@@ -590,7 +590,7 @@ class Node:
       ret_str = ''
       if self.token.arity == 2:
         # 2.1 binary connectives
-        token_str = (r'\: ' + LATEX_DICT[self.token.value] + r'\: '
+        token_str = (' ' + LATEX_DICT[self.token.value] + ' '
                      if opt=='latex' else f" {self.token.value} ")
         kid1, kid2 = self.children
         kid1_str = kid1.build_infix(opt)
