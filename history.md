@@ -1,6 +1,6 @@
 # History
 
-* 2023.09.21 : LaTeX and Text output of proof, with verbose option  
+* 2023.09.28 : LaTeX and Text output of proof, with verbose option  
   which shows the proof validation result.
 * 2023.09.19 : Proof verifier for Propositional logic
 * 2023.09.12 : Parser for Fitch proofs

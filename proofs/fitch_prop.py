@@ -8,6 +8,19 @@ sys.path.append('/Users/jooheejeong/Documents/Work/Proofmood/logical_formulas')
 from first_order_logic_parse import *
 from truth_table import * 
 
+# Make colorama module available.
+import sys, subprocess
+try:
+  from colorama import Fore, Back, Style
+except ModuleNotFoundError:
+  subprocess.check_call(
+    [sys.executable, '-m', 'pip', 'install', 'colorama'],
+      stdout=subprocess.DEVNULL
+  )
+  print("colorama installed")
+  from colorama import Fore, Back, Style
+        
+
 class Connective(Enum):
   BOT = 'bot'
   NOT = 'not'
@@ -57,8 +70,8 @@ class FormulaProp(Formula):
   def get_kid_node2(self) -> Tuple[Node, Node]:
     """ Get the kids of self, whose root is a binary connective. """
     root_token = self.ast.token
-    assert root_token.value in CONN_LIST and root_token.arity ==2, \
-            "FormulaProp.get_kid_node2(): not binary connective formula" 
+    assert (v := root_token.value) in CONN_LIST and root_token.arity ==2, \
+            f"FormulaProp.get_kid_node2(): '{v}' is not binary connective"
     return (self.ast.children[0], self.ast.children[1])
 
   def verified_by(self, rule_inf: RuleInfer, premise: List[Node] = []) \
@@ -76,6 +89,8 @@ class FormulaProp(Formula):
           return  False
         not_i = 0 if premise[0].token.value == 'not' else 1
         not_prem = premise[not_i]
+        if not FormulaProp(not_prem).is_fmla_type(Connective.NOT):
+          return False
         other_prem = premise[1 - not_i]
         return not_prem.children[0] == other_prem
       case RuleInfer.BOT_ELIM:
@@ -121,6 +136,8 @@ class FormulaProp(Formula):
         if len(premise) != 1:
           return  False
         prem_fmla = FormulaProp(premise[0])
+        if not prem_fmla.is_fmla_type(Connective.AND):
+          return False
         left, right = prem_fmla.get_kid_node2()
         return (self.ast == left or self.ast == right) and \
                 prem_fmla.is_fmla_type(Connective.AND)
@@ -131,7 +148,26 @@ class FormulaProp(Formula):
         left, right = self.get_kid_node2()
         return premise[0] == left or premise[0] == right
       case RuleInfer.OR_ELIM:
-        pass
+        if len(premise) != 3: # the only rule with 3 premises
+          return False
+        for i in range(3):
+          or_fmla = FormulaProp(premise[i])
+          if or_fmla.is_fmla_type(Connective.OR):
+            break
+        else:
+          return False
+        imp_fmla1 = FormulaProp(premise[(i+1) % 3])
+        imp_fmla2 = FormulaProp(premise[(i+2) % 3])
+        if not (imp_fmla1.is_fmla_type(Connective.IMP) and \
+                imp_fmla2.is_fmla_type(Connective.IMP)):
+          return False
+        left, right = or_fmla.get_kid_node2()
+        left1, right1 = imp_fmla1.get_kid_node2()
+        left2, right2 = imp_fmla2.get_kid_node2()
+        if right1 != right2 or right1 != self.ast:
+          return False
+        return (left == left1 and right == left2) or \
+          (left == left2 and right == left1)
       case RuleInfer.IMP_INTRO:
         # from A imp B, infer A imp B
         # This rule looks silly because subproof premise must be 
@@ -201,7 +237,7 @@ class FormulaProp(Formula):
         return not premise
       case _:
         raise ValueError("FormulaProp.verified(): wrong rule_inf")
-    return True # type checker needs this
+    return True # never executed. but type checker needs this
   
   # end of class FormulaProp
 
@@ -231,7 +267,7 @@ class Ann:
 
   def parse(self) -> None:
     """From self.input_str, set self.rule and self.premise."""
-    ann_s = self.input_str
+    ann_s = self.input_str.strip()
     err_msg = f'Annotation string "{ann_s}" is not valid.'
     match = re.search(r'\d', ann_s) # find the 1st digit
     if match: # premise is nonempty
@@ -269,7 +305,7 @@ class Ann:
               bOK = n_prem == 2 and bLeafNode(id1) and bLeafNode(id2) # type: ignore
             else: # r_type == 'elim'
               bOK = n_prem == 1 and bLeafNode(id1) # type: ignore
-          elif conn == 'neg':
+          elif conn == 'not':
             # intro or elim
             bOK = len(num_s_li) == 1 and bSubproof(id1) # type: ignore
           elif conn == 'and':
@@ -313,8 +349,7 @@ class NodeLabel:
   def __init__(self, type: str = 'subproof', line: str = '', 
                formula: Formula | None = None, ann: Ann | None = None):
     """ type ::= 'subproof' | 'formula' | 
-                 'comment.hypo' | 'blank.hypo' |
-                 'comment.conc' | 'blank.conc'
+          'comment.hypo' | 'blank.hypo' | 'comment.conc' | 'blank.conc'
         For subproofs, there's not much we need to do.
         For comments and blank lines, we only need to set self.is_hyp,
           to indicate whether the line is in hypothesis or conclusion.
@@ -345,23 +380,35 @@ class NodeLabel:
     #^ line[pos] == '.' if pos != -1
     if pos == -1:
       pos = len(line)
+    else:
+      dot_exists = True
     fmla_part = line[:pos].lstrip()
+    if fmla_part == '':
+      # empty formula is treated as 'not bot' which is always True
+      fmla_part = 'not bot' 
     ann_part = line[pos:].rstrip()
     if ann_part.startswith('.'):
       ann_part = ann_part[1:]
     else:
-      ann_part = '' # actually, this is redundant
+      if ann_part == '' and fmla_part.find(".") != -1:
+        # It is ok to have empty annotation for a line. But
+        # if there is a dot in the formula part, then it is very likely
+        # that there is an error. E.g., 
+        raise ValueError(f"parse_line(): line = '{line}'\n" 
+            "\tAnnotation part is missing.\n"
+            "\tPerhaps there is a typo in the rule of inference.")
       #^ If fmla_part is illegal, then show error messages and exit.
     self.formula = Formula(parse_ast(fmla_part))
     # If ann_part is illegal, then set self.ann to ann_part.
     # So self.ann is either an Ann object or a string or None.
     try:
       self.ann = Ann(ann_part)
-      self.is_hyp = self.ann.rule == RuleInfer.HYP
-      # isinstance(self.ann, Ann)
+      self.is_hyp = (self.ann.rule == RuleInfer.HYP)
     except Exception as e:
-      # error, but keep it anyway
-      # not isinstance(self.ann, Ann)
+      # Error: not isinstance(self.ann, Ann)
+      # keep it for debugging purpose
+      # It's easy to spot the error anyway because 
+      # it'll appear in red in the output.
       self.ann = ann_part
 
   def __str__(self) -> str:
@@ -391,12 +438,15 @@ class ProofNode:
     self.label = label
     self.children = children if children else [] 
     #^ list of ProofNode objects, not the list of labels
-    # The following 3 attributes are set by the build_index() method.
+    # The following 2 attributes are set by the build_index() method.
     self.index = None # type: List[int] | None
     self.line_num = None # type: str | None # e.g., '4', '6-10'
+    # The 4th attribute is set within the parse_fitch() function
+    # using the build_index_dict() method.
     self.index_dict = None # type: Dict[str, List[int]] | None
+    # The last attribute is set within the parse_fitch() function
+    # using the verified() method.
     self.validated = None # type: bool | None
-    #^ value is set within the parse_fitch() function
 
   def __str__(self) -> str:
     return self.build_fitch_text()
@@ -424,57 +474,62 @@ class ProofNode:
         b_hyp = False
         ret_str += VERT * (level - 1) + '├─\n'
       # Output the line for leaf nodes only.
-      if kid.label.type != 'subproof': # subproof is internal node
+      if kid.label.type != 'subproof': # output for leaf node 
         line_str = f"{kid.label}"
         ret_str += VERT * level + f'{kid.line_num}. ' + line_str + '\n'
       else: # recursively call build_fitch_text() for subproofs
         ret_str += kid.build_fitch_text()
     return ret_str
 
-  def show_fitch_text(self, verbose=False) -> None:
+  def show_fitch_text(self, verbose: bool | int = False) -> None:
+    """ If verbose is False, then simply print the return value of 
+        build_fitch_text(). Otherwise, show whether each line passed
+        validation or not by colored marks, i.e.,
+        check mark for success and x-mark for failure. 
+        We allow verbose to be an integer so that we can use 1  
+        in place of True.
+    """
     text_str = self.build_fitch_text()
+    #^ Each line in text_str has been treated so that 
+    #  left border uses VERT and line numbers exist etc.
     if not verbose:
       print(text_str) # trivial
     else:
-      # Make colorama module available.
-      import sys, subprocess
-      try:
-        from colorama import Fore, Back, Style
-      except ModuleNotFoundError:
-        subprocess.check_call(
-          [sys.executable, '-m', 'pip', 'install', 'colorama'],
-           stdout=subprocess.DEVNULL
-        )
-        print("colorama installed")
-        from colorama import Fore, Back, Style
-      # Show whether each line is validated or not.
-      rule_name_li = CONN_LIST + ['repeat', 'LEM']
-      rule_pat_str_li = [f"\\.{rule_name}\\s+" 
-                         for rule_name in rule_name_li]
-      rule_pat_str = "(" + "|".join(rule_pat_str_li) + ")"
-      line_li = text_str.split('\n')
-      pat = re.compile(r'(\d+)\.\s+.*' + (rule_pat_str))
-      for text in line_li:
-        m = pat.search(text)
-        if m:
-          l_num = m.group(1).rstrip()
-          pos = m.span(2)[0]
-          str_l = text[:pos]
-          str_r = ' ' + text[pos+1:]
-          print(str_l, sep="", end="")
-          if self.get_p_node(l_num).validated:
-            print(Fore.LIGHTGREEN_EX, '\u2713', sep="", end="")
-            print(Fore.RESET, end="")
+      # Show whether each line is validated or not by colored marks.
+      # Of course this is for formula line only.
+      b_hyp = True
+      level = len(self.index) if self.index else 0 # always >= 1
+      for kid in self.children:
+        # When the line changes from hyp to non-hyp, insert '├─\n'.
+        if b_hyp and not kid.label.is_hyp:
+          b_hyp = False
+          print(VERT * (level - 1) + '├─')
+        # Output the line for leaf nodes only.
+        if kid.label.type != 'subproof':
+          print(VERT * level, sep="", end="")
+          print(f"{kid.line_num}. ", sep="", end="")
+          # Now, we print the line with colored marks for formula lines.
+          # Comment/blank lines are relatively easy to handle.
+          label = kid.label
+          if label.type == 'formula' and not label.is_hyp:
+            if isinstance(label.ann, Ann):
+              print(label.formula, end="")
+              if kid.validated:
+                print("\t", Fore.LIGHTGREEN_EX, '\u2713', Fore.RESET, sep="", end="")
+              else:
+                print("\t", Fore.LIGHTRED_EX, 'x', Fore.RESET, sep="", end="")
+              print(f" {label.ann}")
+            else:
+              print(label.formula, end="")
+              print("\t", Fore.LIGHTRED_EX, 'x', f" {label.ann}", Fore.RESET, sep="")
           else:
-            print(Fore.LIGHTRED_EX, 'x', sep="", end="")
-            print(Fore.RESET, end="")
-          print(str_r)
+            print(f"{label}")
         else:
-          print(text)
+          kid.show_fitch_text(verbose)       
 
-  def build_fitch_latex(self, verbose: bool = False) -> str:
+  def build_fitch_latex(self, verbose: bool | int = False) -> str:
     """ Build a Fitch-style proof latex source. 
-        Need proofmood_en.sty."""
+        Need proofmood.sty for compilation. """
     def build_fitch_latex_rec(node: ProofNode) -> str:
       ret_str = ''
       b_hyp = True
@@ -516,22 +571,23 @@ class ProofNode:
               #   ann_str = "rule\\; ?"
               # else:
               ann_str = "\\; ".join(label.ann.split())
-              rule_inf = "&  \\infruleErr{" + ann_str + "} "
-              prem = "& "
+              rule_inf = "&  \\multicolumn{2}{l}{" + "\\infruleErr{" + \
+                ann_str + "}} "
+              prem = ""
             nl = "\\pmnl\n"
             ret_str +=  vert + line_num + fmla + check + rule_inf + prem + nl
           else: # label.type == 'comment.*' | 'blank.*' where * ::= 'hypo' | 'conc'
             word_li = kid.label.line.replace("#", "\\#").split()
             line_str = "\\infrul{" + "\\; ".join(word_li) + "}"
             vert = "\\pmvert " * level
-            ret_str += "& \\multicolumn{3}{l}{" + vert + line_num + line_str + \
-                       "} " + "& \\pmnl\n"
+            ret_str += "& \\multicolumn{4}{l}{" + vert + line_num + line_str + \
+                       "} " + "\\pmnl\n"
         else: # recursively call build_fitch_latex_rec() for subproofs
           ret_str += build_fitch_latex_rec(kid)
           ret_str += "& " +  "\\pmvert " * level + "& & & \\\\\n"
       return ret_str
 
-    ret_str = "% \\usepackage{proofmood_en}\n" + \
+    ret_str = "% \\usepackage{proofmood}\n" + \
               "\\begin{fitchproof}\n"
     ret_str += build_fitch_latex_rec(self)
     ret_str += "\\end{fitchproof}\n"
@@ -541,7 +597,7 @@ class ProofNode:
                   l_num: int = 1) -> int:
     """ Recursively set self.index and self.line_num.
         Automatically called by the parse_fitch() function, where
-        self is the root of the whole proof.
+        self is the root of the entire proof.
 
         p_index means the parent's (tree)index(: List[int]). 
         i is the (list)index(: int) of self in the parent's children list. 
@@ -606,20 +662,30 @@ class ProofNode:
       return node.index # type: ignore
     else:
       return node.line_num # type: ignore
-    
+
+
   def is_earlier(self, node_code1, node_code2) -> bool:
-    """ Test if node_code1 is earlier than node_code2, which is equivalent
-        to saying that node_code1 can be used as a premise of node_code2. """
+    """
+    Check if node_code1 precedes node_code2. This implies that node_code1
+    can serve as a premise for node_code2, with the condition that
+    node_code1 cannot be a direct ancestor of node_code2.
+    """
     assert self.index_dict is not None, "get_p_node(): index_dict is None"
     
     # make sure that both node_code1 and node_code2 are of the type List[int]
+    ncode1 = node_code1
+    ncode2 = node_code2
     node_code1 = node_code1 if not isinstance(node_code1, str) \
                   else self.index_dict.get(node_code1)
     if node_code1 is None:
+      print("is_earlier(): node_code=", Fore.YELLOW, f"{ncode1}",
+             Fore.RESET, " not found in index_dict\n", sep="")
       return False
     node_code2 = node_code2 if not isinstance(node_code2, str) \
                   else self.index_dict.get(node_code2)
     if node_code2 is None:
+      print("is_earlier(): node_code=", Fore.YELLOW, f"{ncode2}",
+             Fore.RESET, " not found in index_dict\n", sep="")
       return False
     
     # This order is somewhat unusual but very important.
@@ -634,7 +700,7 @@ class ProofNode:
     """ Test if the conclusion with line number conc is verified by 
         (rule_inf, premise). conc of the form 's-e' is not accepted.
         self must be the root of the whole proof. """
-    assert bLeafNode(conc), f"verified_by(): conclusion='{conc}' is not accepted"
+    assert bLeafNode(conc), f"verified_by(): line {conc} is not conclusion"
     assert self.index_dict is not None, "verified_by(): index_dict is None"
     p_node = self.get_p_node(conc) # ProofNode type
     assert p_node.label.type == 'formula', \
@@ -695,7 +761,7 @@ class ProofNode:
         by its annotation.  conc of the form 's-e' is not accepted.
         self must be the root of the whole proof. 
     """
-    assert bLeafNode(conc), f"verified_by(): conclusion='{conc}' is not accepted"
+    assert bLeafNode(conc), f"verified(): line {conc} is not conclusion"
     assert self.index_dict is not None, "verified_by(): index_dict is None"
     p_node = self.get_p_node(conc) # ProofNode type
     ann = p_node.label.ann
@@ -720,7 +786,15 @@ class ProofNode:
         else:
           return False
     return True
-  
+
+  def show_validation_result(self):  
+    if self.verified_all():
+      print("The proof is", Fore.LIGHTGREEN_EX, 
+            " all valid", Fore.RESET, ".\n", sep='')
+    else:
+      print("The proof is", Fore.LIGHTRED_EX, 
+            " invalid", Fore.RESET, ".\n", sep='')
+
   # end of class ProofNode
 
 class ProofParser:
@@ -756,8 +830,8 @@ class ProofParser:
             raise ValueError("ProofParser.proof(): below ground level")
           self.advance()
           break
-        if (is_hypo:=line_str.endswith('.hypo_')) or \
-           (is_conc:=line_str.endswith('.conc_')):
+        if (is_hypo:=line_str.endswith('.hypo_')) or line_str.endswith('.conc_'):
+          #^ comment or blank line case
           line_str = line_str[:-6]
           suffix = '.hypo' if is_hypo else '.conc'
           if line_str == '' or line_str.isspace():
@@ -766,7 +840,7 @@ class ProofParser:
             label_type = 'comment' + suffix
           else:
             raise ValueError("ProofParser.proof(): .hypo_ .conc_ error")
-        else:
+        else: # formula case
           label_type = 'formula'
         label = NodeLabel(label_type, line_str)
         children.append(ProofNode(label)) # leaf node
@@ -778,12 +852,13 @@ class ProofParser:
 
 def parse_fitch(proof_str: str, tabsize: int = 2) -> ProofNode:  
   lines = get_str_li(proof_str, tabsize) 
-  #^ list of strings, where the subproofs are indicated by double brace pairs
-  #^ each element of the list corresponds to a line of the proof
+  #^ List of strings, where the subproofs are indicated by double brace pairs.
+  #^ Each element of the list corresponds to a line of the proof.
   parser = ProofParser(lines, tabsize)
-  proof_node = parser.proof()
-  if parser.level != 1:
-    raise ValueError("parse_fitch(): parsing ended with non-ground level")
+  proof_node = parser.proof() # proof_node is a ProofNode object
+  if parser.level != 1: # just give warning
+    print("parse_fitch(): parsing ended with " + 
+          Fore.YELLOW, "non-ground level\n" + Fore.RESET, sep="")
   proof_node.build_index()
   proof_node.index_dict = proof_node.build_index_dict()
   # Check that in all subproofs, the hypothesis have at least one line
@@ -862,7 +937,9 @@ def word_in_str(word_li: List[str], text: str) -> int:
   import re
 
   word_li_dot = [r"\." + word for word in word_li]
-  my_re = r"\b" +'|'.join(word_li_dot) + r"\b"
+  my_re = r"(?<![\w])" +'|'.join(word_li_dot) + r"\b"
+  #^ r"(?<![\w])" is used to match 
+  #   \b followed by a dot followed by .bot, .hyp etc.
   m = re.search(my_re, text)
   if m is None:
     return -1
@@ -875,12 +952,15 @@ def word_in_str(word_li: List[str], text: str) -> int:
     else:
       return -1
 
-def get_str_li(proof_str: str, tabsize: int) -> List[str]:
+def get_str_li(proof_str: str, tabsize: int, verbose: bool = False) \
+              -> List[str]:
   """
   This is a preprocessing function for parse_fitch().
 
   Convert proof_str to a list of strings, where the subproofs are
   indicated by double brace pairs.
+
+  verbose is for debugging purpose. If True, then print the result.
 
   Indentation is the key to parsing a Fitch-style proof.
   In proof_str, indentations are indicated by tabs or spaces or VERTs.
@@ -889,8 +969,8 @@ def get_str_li(proof_str: str, tabsize: int) -> List[str]:
   2. Remove the leading line number if any from each line.
   3. From the change of level between lines, convert indentation to 
     double brace pairs to indicate subproofs.
-  4. When there is a change of line type from conclusion to hyp, add
-    ["}}", "{{"] to the list.
+  4. When there is a change of line type from conclusion to hyp in the
+    same level, add ["}}", "{{"] to the list.
 
   Indentation is important for blank lines and comments too. So we
   must be very careful about them. Some editors may automatically
@@ -914,12 +994,14 @@ def get_str_li(proof_str: str, tabsize: int) -> List[str]:
 
   str_li_ret = [] # this will be returned
   TAB_sp = ' ' * tabsize
-  pat_num = re.compile(r'\d+\.\s*') # for matching line numbers
-  pat_hyp = re.compile(r'\s+\.hyp$') # for matching hypotheses
+  pat_num = re.compile(r'^\s*\d+\.\s*') # for matching line numbers
+  pat_hyp = re.compile(r'\s*\.hyp$') # for matching hypotheses
+  pat_hyp_false = re.compile(r'\.\s+hyp$') # false pattern for hyp
   level0 = 1
   proves_str = PROVES if VERT_used else 'proves'
-  before_proves = True # current line is before the proves_str
-  right_after_proves = False
+  belongs_to_hyp = True # current line is before the proves_str
+  # Use the following bool variable to prevent empty conclusion part
+  right_after_proves = False 
   for str in str_li:
     # get the level of the current line, and
     # remove the indentation part from the current line
@@ -929,7 +1011,7 @@ def get_str_li(proof_str: str, tabsize: int) -> List[str]:
         str = str[1:]
         level += 1
     else:
-      level = 1
+      level = 1 # reset and start fresh
       while True:
         if str.startswith(TAB):
           str = str[1:]
@@ -942,56 +1024,75 @@ def get_str_li(proof_str: str, tabsize: int) -> List[str]:
     # remove leading line number if any
     if (m := pat_num.search(str)):
       str = str[m.end():] 
+      num_str = m.group().lstrip()
       #^ So the line number has no effect at all.
       #^ The parser will assign line numbers automatically.
       #^ It is used only for the user's convenience.
+    else:
+      num_str = ''
+    is_proves_str = str.find(proves_str) == 0
     is_blank = (str == '' or str.isspace())
-    is_fmla = not (str.startswith('#') or is_blank)
-    if str.find(proves_str) != 0: # usual case
+    is_fmla = not (str.startswith('#') or is_blank or is_proves_str)
+    if not is_proves_str: # usual case
       if level > level0:
-        if before_proves:
-          raise ValueError("get_str_li(): before_proves but level increased\n"
-                           f"\tstr = '{str}'")
+        if belongs_to_hyp:
+          raise ValueError("get_str_li(): level increased " 
+            f"while belongs_to_hyp\n\t{num_str}{str}")
         str_li_ret.append("{{")
-        before_proves = True
+        if is_fmla and not pat_hyp.search(str):
+          if pat_hyp_false.search(str):
+            raise ValueError("get_str_li(): watch for the typo " 
+              f"'. hyp' instead of '.hyp'\n\t{num_str}{str}")
+          else:        
+            raise ValueError("get_str_li(): level increased but not is_hyp"
+                            f"\n\t{num_str}{str}")
+        belongs_to_hyp = True
         right_after_proves = False
       elif level < level0:
-        if before_proves:
-          raise ValueError("get_str_li(): before_proves but level decreased\n"
-                           f"\tstr = '{str}'")
+        if belongs_to_hyp or pat_hyp.search(str):
+          raise ValueError("get_str_li(): level decreased " 
+            f"while belongs_to_hyp\n\tor annotated with .hyp\n\t{num_str}{str}")
         while level < level0:
           str_li_ret.append("}}")
           level0 -= 1
         right_after_proves = False
       else: # level == level0 case
         if right_after_proves:
-          if is_fmla and pat_hyp.search(str):
-            raise ValueError("get_str_li(): right_after_proves but is_hyp\n"
-                             f"\tstr = '{str}'")
+          if is_fmla and pat_hyp.search(str): # and level == level0
+            raise ValueError("get_str_li(): same level and " 
+              f"right_after_proves, but is_hyp\n"
+              "\tPerhaps you should indent the following line:\n"
+              f"\t{num_str}{str}")
           right_after_proves = False          
-        if before_proves:
+        if belongs_to_hyp:
           if is_fmla and not pat_hyp.search(str):
-            raise ValueError("get_str_li(): before_proves but not is_hyp\n"
-                             f"\tstr = '{str}'") 
+            raise ValueError("get_str_li(): belongs_to_hyp but not is_hyp\n"
+              "\tPerhaps '.hyp' is misspelled, or \n"
+              "\tyou forgot to insert the 'proves' line before the following:\n"
+              f"\t{num_str}{str}") 
         else: 
           # If the previous line is a conclusion and the current line
           # is a hypothesis, then add ["}}", "{{"].
-          if pat_hyp.search(str): # adjacent subproofs
+          if is_fmla and pat_hyp.search(str): # adjacent subproofs
             str_li_ret += ["}}","{{"]
-            before_proves = True
+            belongs_to_hyp = True
       if not is_fmla:
         # attach info about before/after proves_str
-        suffix = '.hypo_' if before_proves else '.conc_'
+        suffix = '.hypo_' if belongs_to_hyp else '.conc_'
       else:
         suffix = ''
+      # for all 3 cases (comment, blank and fmla)
       str_li_ret.append(str + suffix)
       level0 = level
     else: # proves_str in the current line
-      if not before_proves:
-        raise ValueError("get_str_li(): proves_str in conclusion part")
-      before_proves = False
+      if not belongs_to_hyp:
+        raise ValueError("get_str_li(): proves_str in conclusion part\n"
+        "\tPerhaps you should find and delete the 'proves' line\n" 
+        "\twhich follows a non-hyp line.")
+      belongs_to_hyp = False
       right_after_proves = True
-
+  if verbose:
+    print_lines(str_li_ret)
   return str_li_ret
 
 def print_lines(lines: List[str]) -> None:

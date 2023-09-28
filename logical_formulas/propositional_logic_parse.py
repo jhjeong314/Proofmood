@@ -300,8 +300,8 @@ class Parser:
     while self.check_token_type('conn_arrow'): # 'imp', 'iff', 'xor'
       token = self.current_token
       if token is None:
-        raise SyntaxError(f"Expected a token at {self.index}," +
-                f" in expr(), but {self.current_token} is None.")
+        raise SyntaxError("Parser.expr(): Expected a token at " 
+                          f"{self.index},\n\tbut encountered None.")
       self.advance()
       if token.value == 'imp':
         right_term = self.expr()
@@ -330,8 +330,9 @@ class Parser:
       if self.check_token_type('rparen'):
         self.advance()
       else:
-        raise SyntaxError(f"Expected ')' at {self.index}," +
-                          f" in factor(), but {self.current_token} is given.")
+        raise SyntaxError("Parser.factor(): "
+                  f"Expected ')' at {self.index}," 
+                  f" but encountered {self.current_token}.")
     elif self.check_token_type('conn_1ary'): # 'not'
       token = self.current_token 
       self.advance()
@@ -349,18 +350,20 @@ class Parser:
         self.advance()
         return Node(token)
       else:
-        raise SyntaxError(f"Expected bot or prop_letter at {self.index}," +
-                          f" in atom(), but {token} is given.")
+        raise SyntaxError("Parser.atom(): Expected bot or prop_letter "
+                          f"at {self.index}," 
+                          f"but encountered '{token}'")
     else:
-      raise SyntaxError("Unexpected end of input, in atom()")  
+      raise SyntaxError("Parser.atom(): Unexpected end of input")  
     
 def parse_ast(input_text):
   tokens = tokenizer(input_text)
   parser = Parser(tokens)
   ast = parser.parse() # ast = Abstract Syntax Tree
   if parser.current_token is not None:
-    raise SyntaxError(f"Unexpected token {parser.current_token} at {parser.index}," +
-                      f" in parse_ast(). Expected end of input.")
+    raise SyntaxError(f"parse_ast(): Expected end of input,\n"
+      "\tbut encountered token {parser.current_token} at {parser.index}."
+                       
   return ast
 
 ## (2/2) Draw bussproof style Trees ## ------------------------------------

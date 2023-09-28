@@ -295,7 +295,8 @@ def tokenizer(input_text):
       raise ValueError(f"'{s}' is invalid (non-ASCII)")
     if not (set(s).issubset(Token.SPECIAL_CHARS) or 
             Token.isnumeral(s) or Token.isword(s)):   
-      raise ValueError(f"'{s}' is invalid (illegal character)")
+      raise ValueError("tokenizer(): " 
+                       f"'{s}' is invalid (illegal character)")
     
     if set(s).issubset(Token.SPECIAL_CHARS) and len(s) > 1:
       # split string of consecutive special chars into 
@@ -380,9 +381,8 @@ class Node:
     return self.build_polish_notation()
 
   def __eq__(self, other):
-    infix_self = self.build_infix('text')
-    infix_other = other.build_infix('text')
-    return infix_self == infix_other
+    # return infix_self == infix_other
+    return f"{self}" == f"{other}"
   
   def longer_than(self, other):
     """ Test whether the infix string of self is longer than that of other.
@@ -633,6 +633,12 @@ class Node:
         ret_str += kid1_str + token_str + kid2_str
       elif self.token.token_type == 'conn_1ary': 
         # 2.2 unary connectives (actually, negation only)
+        # 'not bot' case. This is a special case because we don't want
+        #   to render it as '\neg \bot'. This corresponds 
+        #   to the **empty formula**, which is interpreted as True.
+        if self.token.value == 'not' and \
+          self.children[0].token.value == 'bot':
+          return ''
         token_str = (LATEX_DICT[self.token.value] + r'\, ' if opt=='latex'
                      else self.token.value + ' ')
         kid1 = self.children[0]
@@ -895,8 +901,8 @@ class Parser:
     while self.check_token_type('conn_arrow'): # 'imp', 'iff', 'xor'
       token = self.current_token
       if token is None:
-        raise SyntaxError(f"Expected a token at {self.index}," +
-                f" in expr(), but {self.current_token} is None.")
+        raise SyntaxError("Parser.expr(): Expected a token at " 
+          f"{self.index}, encountered None.")
       self.advance()
       if token.value == 'imp':
         right_node = self.formula() # recursive call for right-assoc
@@ -925,8 +931,8 @@ class Parser:
       if self.check_token_type('rparen'):
         self.advance()
       else:
-        raise SyntaxError(f"Expected ')' at {self.index}," +
-                f" in comp_fmla2(), but {self.current_token} is given.")
+        raise SyntaxError("Parser.comp_fmla2(): Expected ')' at " 
+          f"{self.index}, but encountered {self.current_token}.")
     elif self.check_token_type('conn_0ary'):
       token = self.current_token
       self.advance()
@@ -941,8 +947,8 @@ class Parser:
       self.advance()
       token_v = self.current_token
       if token_v is None or token_v.token_type != 'var':
-        raise SyntaxError(f"Expected a variable at {self.index}," +
-                f" in comp_fmla2(), but {self.current_token} is given.")
+        raise SyntaxError("Parser.comp_fmla2(): Expected a variable at "
+          f"{self.index}, but encountered {self.current_token}.")
       token_v.token_type = 'var_determiner'
       token_v.arity = 1
       self.advance()
@@ -976,21 +982,20 @@ class Parser:
             elif self.check_token_type('rparen'):
               break
             else:
-              raise SyntaxError(
-                f"Expected ',' or ')' after predicate argument at " +
-                f"{self.index} in atom(), but {self.current_token}" +
-                f" is given.")
+              raise SyntaxError("Parser.atom(): Expected ',' or ')' after "
+                f"predicate argument at {self.index},\n" 
+                f" but encountered {self.current_token}")
+                
           # arity check
           if token.arity is None or token.arity != len(args):
-            raise SyntaxError(
-              f"Predicate {token.value} expects {token.arity} " +
-              f"arguments, but {len(args)} were given")
+            raise SyntaxError(f"Parser.atom(): Predicate {token.value} "
+              f"expects {token.arity} arguments, but " 
+              f"{len(args)} arguments are given.")
           self.advance()
           return Node(token, args)
         else:
-          raise SyntaxError(
-            f"Expected '(' after predicate symbol at {self.index}" +
-            f" in atom(), but {self.current_token} is given.")
+          raise SyntaxError(f"Parser.atom(): Expected '(' after predicate "
+            f"symbol at {self.index}, but encountered {self.current_token}.")
       else:
         # t1 pred_in t2 case (such as t1 = t2, t1 < t2 etc.)
         # t1 = t2 < t3 ~ t4 is parsed as 
@@ -1009,7 +1014,7 @@ class Parser:
           saved_node = right_node
         return node
     else:
-      raise SyntaxError("Unexpected end of input, in atom()")
+      raise SyntaxError("Parser.atom(): Unexpected end of input")
       
 
   def term(self) -> Node:
@@ -1078,9 +1083,8 @@ class Parser:
       if self.check_token_type('rparen'):
         self.advance()
       else:
-        raise SyntaxError(
-          f"Expected ')' after term at {self.index}," +
-          f" in factor_postfix(), but {self.current_token} is given.")
+        raise SyntaxError("Parser.factor_postfix(): Expected ')' at "
+          f"{self.index}, but encountered {self.current_token}.")
     elif self.check_token_type('func_pre'):
       node = self.func_call()
     else:
@@ -1103,26 +1107,25 @@ class Parser:
             elif self.check_token_type('rparen'):
               break
             else:
-              raise SyntaxError(
-                f"Expected ',' or ')' after function argument at " +
-                f"{self.index} in func_call(), but {self.current_token}" +
-                f" is given.")
+              raise SyntaxError("Parser.func_call(): "
+                f"Expected ',' or ')' after function argument \n\tat " +
+                f"{self.index}, but encountered {self.current_token}.")
           # arity check
           if token.arity is None or token.arity != len(args):
-            raise SyntaxError(
-              f"Function {token.value} expects {token.arity} " +
-              f"arguments, but {len(args)} were given")
+            raise SyntaxError("Parser.func_call(): "
+              f"Function {token.value} expects \n\t{token.arity} " +
+              f"arguments, but {len(args)} arguments are given")
           self.advance()
           return Node(token, args)  
         else:
-          raise SyntaxError(
-            f"Expected '(' after function symbol at {self.index}" +
-            f" in func_call(), but {self.current_token} is given.")
+          raise SyntaxError("Parser.func_call(): "
+            f"Expected '(' after function symbol \n\tat {self.index}," +
+            f" but encountered {self.current_token}.")
       else:
-        raise SyntaxError(f"Expected function symbol at {self.index} in" +
-                          f" func_call(), but {token} is given.")
+        raise SyntaxError("Parser.func_call(): Expected function "
+          f"symbol at {self.index} but encountered {token}.")
     else:
-      raise SyntaxError("Unexpected end of input, in func_call()")
+      raise SyntaxError("Parser.func_call(): Unexpected end of input")
 
   def identifier(self) -> Node:
     if self.current_token is not None:
@@ -1131,18 +1134,18 @@ class Parser:
         self.advance()
         return Node(token)
       else:
-        raise SyntaxError(f"Expected identifier at {self.index} in" +
-                          f" identifier(), but {token} is given.")
+        raise SyntaxError("Parser.identifier(): Expected an identifier"
+          f" at {self.index},\n\tbut encountered {token}.")
     else:
-      raise SyntaxError("Unexpected end of input, in identifier()")
+      raise SyntaxError("Parser.identifier(): Unexpected end of input")
 
 def parse_ast(input_text):
   tokens = tokenizer(input_text)
   parser = Parser(tokens)
   ast = parser.parse() # ast = Abstract Syntax Tree
   if parser.current_token is not None:
-    raise SyntaxError(
-      f"Unexpected token '{parser.current_token}' at {parser.index}," +
-      f" in parse_ast(), while end of input expected.")
+    raise SyntaxError("parse_ast(): "
+      f"Unexpected token '{parser.current_token}' \n"
+      f"\tat {parser.index}, while end of input expected.")
   return ast
 

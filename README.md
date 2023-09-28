@@ -15,9 +15,8 @@ You can contact me at jhjeong314@gmail.com and/or treenote@snu.ac.kr.
 
 ## 0. Readme
 
-1. Most `.ipynb` files in this repo are also uploaded to Google Colab, allowing you to run the code in your web browser.
-1. The contents of `Document.pdf` provide an explanation of the fundamental theories that underlie this repository.
-
+1. Most `.ipynb` files in this repo are also uploaded to Google Colab, allowing you to run the code in your web browser. Please take note that Google Colab may not function optimally on mobile devices at times. We recommend using a desktop web browser for the best experience.
+1. The contents of the `Document.pdf` provide an explanation of the fundamental theories that underlie this repository, as well as its actual implementation.
 
 ## 1. Arithmetic expressions
 
@@ -29,11 +28,11 @@ Before we start working on logical formulas, we prepare some tools for parsing a
   [GitHub](./tests/mathjax_in_jupyternotebook.ipynb) | [Google Colab](https://colab.research.google.com/drive/1rywvvBl6WIMHzCdW-HeH69kbf9XYjxCW?usp=sharing)
 1. Parser for a simple arithmetic grammar (`arith4parser.ipynb`)  
   [GitHub](./attic/arith4parser.ipynb) | [Google Colab](https://colab.research.google.com/drive/1vpzjogSZi-QOx0QnBOxgPPFZkEJVKU1b?usp=sharing)
-1. Parser for arithmetic with unary minus and postfix operators (`arith5parser.ipynb`)  
+1. Parser for arithmetic. Added unary minus, postfix operators and exponentiation(right associative). (`arith5parser.ipynb`)  
   [GitHub](./attic/arith5parser.ipynb) | [Google Colab](https://colab.research.google.com/drive/18niproAYizRP6BzWXYsCK6wGc0GJse1U?usp=sharing)
-1. Parser for arithmetic with function symbols. (`arith6parser.ipynb`)  
+1. Parser for arithmetic. Added function symbols. Display expressions graphically using $\LaTeX$. (`arith6parser.ipynb`)  
   [GitHub](./attic/arith6parser.ipynb) | [Google Colab](https://colab.research.google.com/drive/1eAV9i2jEN39hfL7RbOsKnIW7qi-YveJa?usp=sharing)
-1. Bussproof style tree (`arith7parser.ipynb`)  
+1. Parsed expressions are now displayed as Bussproof style tree (`arith7parser.ipynb`)  
   [GitHub](./attic/arith7parser.ipynb) | [Google Colab](https://colab.research.google.com/drive/1Rv_vqzg8BtrmRfc16FwVsPYh3zNR07LE?usp=sharing)
 
 ## 2. Logical formulas
@@ -48,5 +47,11 @@ To ensure correct compilation of the source .tex file, it is necessary to includ
 
 ## 3. Fitch proofs
 
-1. Truth Table (`truth_table.ipynb`) Text mode and LaTeX mode.  The latter prints out the LaTeX source code for the truth table on the screen.  
+Henceforth, both Text mode and LaTeX mode are available.  The latter prints out the LaTeX source code with the aid of `usepackage{proofmood}`.  Truth table doesn't need this package.
+
+1. Truth Table (`truth_table.ipynb`)  
 [GitHub](./logical_formulas/truth_table.ipynb) | [Google Colab](https://colab.research.google.com/drive/1_CK9IwWhMy4DkOSCYxjeD5YkQyaiQyaw?usp=sharing)
+1. Propositional Logic (`fitch_prop.ipynb`) Fitch proof editor and verifier for propositional logic.  
+[GitHub](./proofs/fitch_prop.ipynb) | [Google Colab](https://colab.research.google.com/drive/1RjmIWlpfpVbrR4ijKEqMdlhSs5q3shBU?usp=sharing)
+1. Tautologies (`tautologies.ipynb`) Fitch proofs for some important tautologies.  
+[GitHub](./proofs/tautologies.ipynb) | [Google Colab](https://colab.research.google.com/drive/1k4-uz5QScpRPnUW0GE8-kztemDTNh47M?usp=sharing)
