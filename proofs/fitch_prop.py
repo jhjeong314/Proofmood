@@ -4,7 +4,7 @@ import re
 from enum import Enum
 
 import sys
-sys.path.append('/Users/jooheejeong/Documents/Work/Proofmood/logical_formulas')
+sys.path.append('..//logical_formulas')
 from first_order_logic_parse import *
 from truth_table import * 
 
