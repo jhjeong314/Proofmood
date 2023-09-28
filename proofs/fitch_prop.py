@@ -3,11 +3,6 @@ from typing import List, Tuple, Dict, Set, Any
 import re
 from enum import Enum
 
-import sys
-sys.path.append('..//logical_formulas')
-from first_order_logic_parse import *
-from truth_table import * 
-
 # Make colorama module available.
 import sys, subprocess
 try:
@@ -19,7 +14,17 @@ except ModuleNotFoundError:
   )
   print("colorama installed")
   from colorama import Fore, Back, Style
-        
+
+try:        
+  sys.path.append('../logical_formulas')
+  from first_order_logic_parse import *
+  from truth_table import * 
+except ImportError:
+  url = 'https://raw.githubusercontent.com/jhjeong314/Proofmood/main/logical_formulas'
+  import httpimport
+  with httpimport.remote_repo(url):
+    from first_order_logic_parse import *
+    from truth_table import * # type: ignore
 
 class Connective(Enum):
   BOT = 'bot'
