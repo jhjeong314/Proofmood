@@ -20,7 +20,7 @@ You can contact me at jhjeong314@gmail.com and/or treenote@snu.ac.kr.
 
 ## 1. Arithmetic expressions
 
-Before we start working on logical formulas, we prepare some tools for parsing and displaying the AST(abstract syntax tree) in various formats such as Polish notation, RPN, infix notation with $\LaTeX$ enabled, and bussproof style tree.
+Before we start working on logical formulas, we prepare some tools for parsing and displaying the AST(abstract syntax tree) of arithmetic expressions in various formats such as Polish notation, RPN, infix notation with $\LaTeX$ enabled, and bussproof style tree.
 
 1. LaTeX in Jupyter Notebook (`latex_in_jupyternotebook.ipynb`)  
   [GitHub](./tests/latex_in_jupyternotebook.ipynb) | [Google Colab](https://colab.research.google.com/drive/1JRn8m4_t77R-gJqjFSXiKaikWcDMQAnS?usp=sharing)
@@ -47,7 +47,7 @@ To ensure correct compilation of the source .tex file, it is necessary to includ
 
 ## 3. Fitch proofs
 
-Henceforth, both Text mode and LaTeX mode are available.  The latter prints out the LaTeX source code with the aid of `usepackage{proofmood}`.  Truth table doesn't need this package.
+Henceforth, both Text mode and LaTeX mode are available.  The latter prints out the LaTeX source code that can be compiled with the aid of `\usepackage{proofmood}`.  Truth table doesn't need this package.
 
 1. Truth Table (`truth_table.ipynb`)  
 [GitHub](./logical_formulas/truth_table.ipynb) | [Google Colab](https://colab.research.google.com/drive/1_CK9IwWhMy4DkOSCYxjeD5YkQyaiQyaw?usp=sharing)
