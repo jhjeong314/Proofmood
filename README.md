@@ -55,3 +55,9 @@ Henceforth, both Text mode and LaTeX mode are available.  The latter prints out 
 [GitHub](./proofs/fitch_prop.ipynb) | [Google Colab](https://colab.research.google.com/drive/1RjmIWlpfpVbrR4ijKEqMdlhSs5q3shBU?usp=sharing)
 1. Tautologies (`tautologies.ipynb`) Fitch proofs for some important tautologies.  
 [GitHub](./proofs/tautologies.ipynb) | [Google Colab](https://colab.research.google.com/drive/1k4-uz5QScpRPnUW0GE8-kztemDTNh47M?usp=sharing)
+
+## 4. Automatic generation of Fitch proofs
+
+1. Alpha-beta pruning  
+Not used for the time being.  Nevertheless this is included here because I believe that this tree searching algorithm will be used later for Fitch proof trees.  
+[GitHub](https://github.com/jhjeong314/CS_Math) | [Google Colab](https://colab.research.google.com/drive/1QBi6fV4Pq3wA9A7JKGV-WFBGeKWZVgeD?usp=sharing) 
