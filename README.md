@@ -53,11 +53,11 @@ Henceforth, both Text mode and LaTeX mode are available.  The latter prints out 
 [GitHub](https://github.com/jhjeong314/CS_Math) | [Google Colab](https://colab.research.google.com/drive/1QBi6fV4Pq3wA9A7JKGV-WFBGeKWZVgeD?usp=sharing)   
 Not used for the time being.  Nevertheless this is included here because I believe that this tree searching algorithm will be used later for Fitch proof trees.  
 
-1. Automatic annotation: This represents the initial phase of automatic Fitch proof generation. (`search_ann.ipynb`) [GitHub](./proofs_propositional/search_ann.ipynb)
+1. Automatic annotation: This represents the initial phase of automatic Fitch proof generation. (`search_ann.ipynb`) [GitHub](./proofs_propositional/search_ann.ipynb) | [Google Colab](https://colab.research.google.com/drive/1OP3YJ-MCPr8mDOzpCNpYw6abeANDUHzB?usp=sharing)
     - When supplied with a proof text, it accurately annotates any lines that lack proper annotations within the conclusion formulas, assuming the requisite formulas or subproofs already exist.
     - Hypotheses, comments, and blank lines remain unaltered.
     - This process does not involve the creation or deletion of formulas or subproofs.
 
 1. Automatic annotation examples
-    - (`search_ann_ex0.ipynb`) [GitHub](./proofs_propositional/search_ann_ex0.ipynb)
-    - (`search_ann_ex1.ipynb`) [GitHub](./proofs_propositional/search_ann_ex1.ipynb)
+    - (`search_ann_ex0.ipynb`) [GitHub](./proofs_propositional/search_ann_ex0.ipynb) | [Google Colab](https://colab.research.google.com/drive/1ks7j3kGAgWr7lgdqfh15eycBf1AD1Jl0?usp=sharing)
+    - (`search_ann_ex1.ipynb`) [GitHub](./proofs_propositional/search_ann_ex1.ipynb) | [Google Colab](https://colab.research.google.com/drive/1jlqCMTbiMxuaf3kZHb1HD4ZSBz9HH4TG?usp=sharing)
