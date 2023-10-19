@@ -760,7 +760,7 @@ class Node:
     try:
       from modules.draw_tree import draw_ast
     except ImportError: 
-      url = 'https://raw.githubusercontent.com/jhjeong314/Proofmood/main/logical_formulas'
+      url = 'https://raw.githubusercontent.com/jhjeong314/Proofmood/main/modules'
       import httpimport
       with httpimport.remote_repo(url):
         # for Google Colab, which has limited capabilities with LaTeX

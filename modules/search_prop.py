@@ -1,4 +1,10 @@
-from modules.validate_prop import *
+try:
+  from modules.validate_prop import *
+except ImportError:
+  url = 'https://raw.githubusercontent.com/jhjeong314/Proofmood/main/modules'
+  import httpimport
+  with httpimport.remote_repo(url):
+    from validate_prop import *  
 
 def mykey(x: str):
   """ This is a key function for sorting the list of line numbers. """

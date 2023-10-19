@@ -23,7 +23,7 @@ You can contact me at jhjeong314@gmail.com and/or treenote@snu.ac.kr.
 
 ## 1. Arithmetic expressions
 
-Before we start working on logical formulas, we prepare some tools for parsing and displaying the AST(abstract syntax tree) of arithmetic expressions in various formats such as Polish notation, RPN, infix notation with $\LaTeX$ enabled, and bussproof style tree. [[Go to Arithmetic expressions](1arithmetic_expressions.md)]
+Before we start working on logical formulas, we prepare some tools for parsing and displaying the AST(abstract syntax tree) of arithmetic expressions in various formats such as Polish notation, RPN, infix notation with $\LaTeX$ enabled, and bussproof style tree. [[Go to Arithmetic expressions](https://github.com/jhjeong314/Proofmood/blob/main/1arithmetic_expressions.md)]
 
 ## 2. Logical formulas
 

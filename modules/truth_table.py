@@ -1,7 +1,15 @@
 from typing import List, Tuple
 from enum import Enum
 
-from modules.first_order_logic_parse import *
+try:
+  import sys
+  sys.path.append('..')
+  from modules.first_order_logic_parse import *
+except ImportError:
+  url = 'https://raw.githubusercontent.com/jhjeong314/Proofmood/main/modules'
+  import httpimport
+  with httpimport.remote_repo(url):
+    from first_order_logic_parse import *
 
 class Connective(Enum):
   BOT = 'bot'

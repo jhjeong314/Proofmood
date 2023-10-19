@@ -15,7 +15,13 @@ except ModuleNotFoundError:
   print("colorama installed")
   from colorama import Fore, Back, Style
 
-from modules.truth_table import * 
+try:
+  from modules.truth_table import * 
+except ImportError:
+  url = 'https://raw.githubusercontent.com/jhjeong314/Proofmood/main/modules'
+  import httpimport
+  with httpimport.remote_repo(url):
+    from truth_table import *  
 
 class RuleInfer(Enum):
   # ordered by the precedence of proof search 
