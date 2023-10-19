@@ -126,7 +126,7 @@ class Token:
       self.token_type = "conn_1ary"
       self.arity = 1
       self.precedence = 3
-    elif value == 'bot':
+    elif value in ('bot', 'top'):
       self.token_type = 'conn_0ary'
       self.arity = 0
       self.precedence = 9
@@ -345,7 +345,7 @@ def print_in_chunk(li, chunk_size=5): # li is any iterable
 #                 <comp_fmla1> { ( "iff" | "xor") <comp_fmla1> }
 # <comp_fmla1> ::= <comp_fmla2> { ("and" | "or") <comp_fmla2> }
 # <comp_fmla2> ::= { ("not" | <determiner>) } 
-#                  ( '(' <formula> ')' | <atom> | "bot" )
+#                  ( '(' <formula> ')' | <atom> | "bot" | "top" )
 # <determiner> ::= <quantifier> <var>
 # <quantifier> ::= "forall" | "exists"
 # <atom> ::= <prop_letter> | <pred_pre> "(" <term> {',' <term>} ")" |
@@ -381,7 +381,6 @@ class Node:
     return self.build_polish_notation()
 
   def __eq__(self, other):
-    # return infix_self == infix_other
     return f"{self}" == f"{other}"
   
   def longer_than(self, other):
@@ -396,7 +395,8 @@ class Node:
       [("not", r"\neg"), ("and", r"\wedge"), ("or", r"\vee"),
       ("imp", r"\rightarrow"), ("iff", r"\leftrightarrow"),
       ("xor", r"\nleftrightarrow"), ("nin", r"\not\in"), ("bot", r"\bot"), 
-      ("emptyset", r"\varnothing"), ("^o", r"^{\circ}"), ("^inv", r"^{-1}"), 
+      ("top", r"\top"), ("emptyset", r"\varnothing"), 
+      ("^o", r"^{\circ}"), ("^inv", r"^{-1}"), 
       ("^#", r"^\#"), ("%", r"\%"), ("<=", r"\le"), (">=", r"\ge"), 
       ("divides", r"\,\vert\,"), ("ndivides", r"\;\vert\mskip-14mu\not\;\;"),
       ("forall", r"\forall"), ("exists", r"\exists")])
@@ -563,12 +563,12 @@ class Node:
   def build_infix_formula(self, opt: str='text') -> str:  
     LATEX_DICT = self.LATEX_DICT
 
-    # 1. atomic formulas and bot
+    # 1. atomic formulas and bot, top
     if not self.children: # 'prop_letter' or 'conn_0ary'
       # 1.1 terminal nodes
       if self.token.token_type == 'prop_letter':
         return self.ident2latex(self.token, opt)
-      else: # self.token.value must be 'bot'
+      else: # self.token.value must be 'bot' or 'top'
         return (LATEX_DICT[self.token.value] if opt=='latex' 
                 else self.token.value)
     elif self.token.token_type in Token.FMLA_TOKENS: 
@@ -584,7 +584,7 @@ class Node:
         kid2_str = kid2.build_infix(opt)
         return (kid1_str + ' ' + self.token2latex(self.token, opt) + 
                 ' ' + kid2_str)
-    # 2. compound formulas except bot -- i.e., connectives 
+    # 2. compound formulas except bot and top -- i.e., connectives 
     #    and quantifiers
     else: 
       ret_str = ''
@@ -633,12 +633,6 @@ class Node:
         ret_str += kid1_str + token_str + kid2_str
       elif self.token.token_type == 'conn_1ary': 
         # 2.2 unary connectives (actually, negation only)
-        # 'not bot' case. This is a special case because we don't want
-        #   to render it as '\neg \bot'. This corresponds 
-        #   to the **empty formula**, which is interpreted as True.
-        if self.token.value == 'not' and \
-          self.children[0].token.value == 'bot':
-          return ''
         token_str = (LATEX_DICT[self.token.value] + r'\, ' if opt=='latex'
                      else self.token.value + ' ')
         kid1 = self.children[0]
@@ -700,7 +694,7 @@ class Node:
   #region comment
   # bussproof tree has the following structure:
   # 1. terminal node: \AxiomC{..}
-  #    terms, prop letters, and bot
+  #    terms, prop letters, and bot, top
   # 2. non-terminal node: \UnaryInfC{..}, \BinaryInfC{..}, \TrinaryInfC{..}
   #    predicate symbol(prefix and infix), equality
   #      prefix predicate's arity is at most 3
@@ -723,7 +717,7 @@ class Node:
       # terminal node. use \AxiomC{..}
       if self.token.token_type == 'prop_letter':
         label = self.ident2latex(self.token)
-      else: # self.token.value must be 'bot'
+      else: # self.token.value must be 'bot' or 'top'
         label = LATEX_DICT[self.token.value]
       the_str = r"\AxiomC" + r"{$" + label + "$}\n"
     else: # pred_pre, pred_in, equality, 
@@ -764,7 +758,7 @@ class Node:
 
   def draw_tree(self, verbose=False):
     try:
-      from draw_tree import draw_ast
+      from modules.draw_tree import draw_ast
     except ImportError: 
       url = 'https://raw.githubusercontent.com/jhjeong314/Proofmood/main/logical_formulas'
       import httpimport
@@ -1139,7 +1133,9 @@ class Parser:
     else:
       raise SyntaxError("Parser.identifier(): Unexpected end of input")
 
-def parse_ast(input_text):
+def parse_ast(input_text=''):
+  if input_text == '':
+    input_text = 'top' # the empty formula interpreted as True
   tokens = tokenizer(input_text)
   parser = Parser(tokens)
   ast = parser.parse() # ast = Abstract Syntax Tree
@@ -1149,3 +1145,19 @@ def parse_ast(input_text):
       f"\tat {parser.index}, while end of input expected.")
   return ast
 
+def show_formula(input_text: str='', node: Node=None):
+  if not isinstance(input_text, str):
+    node = input_text
+  if node is not None:
+    ast = node
+  else:
+    try:
+      ast = parse_ast(input_text)
+    except ValueError as e:
+      print(e)
+    
+  s = ast.build_infix('latex') # type: ignore
+  # Empty formula is parsed as 'top', and we don't want to display it.
+  s = r'\,' if s == r'\top' else s
+  from IPython.display import display, Math
+  display(Math(f"${s}$"))

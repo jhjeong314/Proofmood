@@ -1,9 +1,18 @@
 from typing import List, Tuple
+from enum import Enum
 
-from first_order_logic_parse import *
+from modules.first_order_logic_parse import *
+
+class Connective(Enum):
+  BOT = 'bot'
+  NOT = 'not'
+  AND = 'and'
+  OR = 'or'  
+  IMP = 'imp'
+  IFF = 'iff'
 
 class Formula:
-  def __init__(self, input: str | Node):
+  def __init__(self, input: str | Node = ''):
     try:
       if isinstance(input, str):
         self.ast = parse_ast(input) 
@@ -12,8 +21,8 @@ class Formula:
       if self.ast.type == 'term':
         str_infix = (input if isinstance(input, str) 
           else input.build_infix('text'))
-        raise ValueError(f"Formula.init(): Input \"{str_infix}\" is a term, \
-                           not a formula.")
+        raise ValueError(f"Formula.init(): Input \"{str_infix}\" is a \
+                          term, not a formula.")
     except ValueError as e:
       print(f"ValueError: {e}")
     except SyntaxError as e:
@@ -24,13 +33,17 @@ class Formula:
   
   def __eq__(self, other) -> bool:
     return self.ast == other.ast
+
+  def is_fmla_type(self, fmla_type: Connective) -> bool:
+    return self.ast.token.value == fmla_type.value
   
   def display_infix(self, opt: str='latex'):
     import copy
 
-    if opt in {'latex', 'text'}:
+    if opt in {'latex', 'text'}: # formula case
       self.ast.display_infix(opt)
-    else: # truth_table case {'truth_table', 'truth_table_str'}
+    else: # truth_table case 
+      # opt in {'truth_table', 'truth_table_str'}
       # 1. label_prime_subs(prime_subs_li) should be called in advance.
       # 2. This case returns a string instead of printing it out.
       new_ast = copy.deepcopy(self.ast)
@@ -47,8 +60,8 @@ class Formula:
               node.token.value = f"P{node.alt_str[2:]}"
             else:
               node.token.value = f"{node.alt_str}"
-          else:
-            node.token.value = 'bot'
+          else: # bot | top
+            pass
       rec_fn(new_ast)
       new_fmla = Formula(new_ast)
       if opt == 'truth_table':
@@ -176,6 +189,7 @@ class Formula:
     # tVal_assign is a truth-value assignment, represented by 
     # a string of 0's and 1's, for prime subformulas.
     # For bot, the constant False, we always assign 0.
+    # For top, the constant True, we always assign 1.
     # The length of tVal_assign is the same as the length of 
     # prime_subs_li, denoted by n.
     # For inner nodes of the truth tree, their bValues are assigned
@@ -218,8 +232,8 @@ class Formula:
       node.level = 0
       if node.index >= 0: # in prime_subs_li
         node.bValue = int(tVal_assign[node.index])
-      else: # node.index == -1 which means node is bot
-        node.bValue = 0
+      else: # node.index == -1 which means node is bot or top
+        node.bValue = 0 if node.token.value == 'bot' else 1
 
   def get_bValues(self, opt: str='truth_val') -> List[int]:
     # opt ::== 'truth_val' | 'level'
@@ -535,6 +549,11 @@ class TruthTable:
     # 5. print_truth_table_row()
     
     prime_subs_li = list(self.get_prime_subformulas())
+    if len(prime_subs_li) == 0:
+      print("Error: propositional variable not found in the following:")
+      for f in self.f_list:
+        f.display_infix()
+      return
     alt_str_li = self.label_prime_subs(prime_subs_li)
     n_prime_node = len(prime_subs_li)
     perm, perm_inv = self.order(alt_str_li)

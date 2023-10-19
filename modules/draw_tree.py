@@ -1,4 +1,4 @@
-from first_order_logic_parse import *
+from modules.first_order_logic_parse import *
 
 #region (1/2) Utils for rendering AST ## ------------------------------
 

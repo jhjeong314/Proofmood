@@ -362,7 +362,7 @@ def parse_ast(input_text):
   ast = parser.parse() # ast = Abstract Syntax Tree
   if parser.current_token is not None:
     raise SyntaxError(f"parse_ast(): Expected end of input,\n"
-      "\tbut encountered token {parser.current_token} at {parser.index}."
+      "\tbut encountered token {parser.current_token} at {parser.index}.")
                        
   return ast
 
