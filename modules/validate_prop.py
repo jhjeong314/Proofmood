@@ -1,3 +1,4 @@
+# type: ignore
 #region 0 
 from typing import List, Tuple, Dict, Set, Any, NewType
 import re
@@ -26,13 +27,13 @@ except ImportError:
 class RuleInfer(Enum):
   # ordered by the precedence of proof search 
   LEM = "LEM"
-  REPEAT = "repeat"
   BOT_INTRO = "bot intro"
   NOT_INTRO = "not intro"
   AND_INTRO = "and intro"
   OR_INTRO = "or intro"
   IMP_INTRO = "imp intro"
   IFF_INTRO = "iff intro"
+  REPEAT = "repeat"
   BOT_ELIM = "bot elim"
   NOT_ELIM = "not elim"
   IMP_ELIM = "imp elim"
@@ -42,7 +43,7 @@ class RuleInfer(Enum):
   HYP = "hyp" # not a real rule of inference but necessary for
               # determining whether a line is in hypothesis or not
 
-tree_index = NewType("t_node", List[int]) # tree index (e.g., [1, 0, 2])
+tree_index = NewType("tree_index", List[int]) # tree index (e.g., [1, 0, 2])
 n_code = NewType("n_code", str) # node code (e.g., '1', '2-3')
 
 CONN_LIST = [conn.value for conn in Connective]
@@ -402,14 +403,12 @@ class NodeLabel:
   def build_str(self) -> str:
     if self.type == 'subproof':
       return ''
-    elif self.type == 'formula':
+    else:
       return (f"type: {self.type}\n" 
               f"line: {self.line}\n"
               f"formula: {self.formula}\n"
               f"ann: {self.ann}\n"
               f"is_hyp: {self.is_hyp}")
-    else:
-      return self.line
     
   # end of class NodeLabel
 
@@ -430,12 +429,27 @@ class ProofNode:
     # The 4th attribute is set within the parse_fitch() function
     # using the build_index_dict() method.
     self.index_dict = None # type: Dict[str, List[int]] | None
-    # The last attribute is set within the parse_fitch() function
-    # using the verified() method.
+    # The last attribute is set by validate_all() method.
     self.validated = None # type: bool | None
 
   def __str__(self) -> str:
     return self.build_fitch_text()
+  
+  def build_str(self) -> str:
+    label = self.label
+    n_kid = len(self.children)
+    ret_str_common = (f"type: {label.type}\n"
+                      f"line_num: {self.line_num}\n"
+                      f"index: {self.index}\n"
+                      f"is_hyp: {self.label.is_hyp}\n")
+    
+    if n_kid > 0: # subproof case
+      ret_str = f"number of children: {n_kid}"
+    elif label.type == 'formula':
+      ret_str = f"line: {label}\nvalidated: {self.validated}"
+    else: # comment or blank line
+      ret_str = (f"line: {label.line}\nvalidated: {self.validated}")
+    return ret_str_common + ret_str
     
   def build_fitch_text(self) -> str:
     """ Recursively build Fitch-style proof text which looks like:
@@ -627,10 +641,13 @@ class ProofNode:
   def get_p_node(self, node_code: List[int] | str): # ProofNode type
     """ Get and return the p_node specified by node_code, which 
         is either a tree index(: List[int]) or a line number(:str).
-        node_code of the form 's-e' is accepted too.
+        Integer node_code is accepted as a line number.
+        node_code of the form 's-e' is accepted too of course.
         self must be the root of the whole proof. """
     assert self.index_dict is not None, "get_p_node(): index_dict is None"
     p_node = self
+    if isinstance(node_code, int):
+      node_code = str(node_code)
     if isinstance(node_code, str):
       index = self.index_dict.get(node_code)
       if index is not None:
@@ -863,8 +880,10 @@ class ProofParser:
   
   # end of class ProofParser
 
-def parse_fitch(proof_str: str, validate=True, tabsize: int = 2) \
+def parse_fitch(proof_str: str='', validate=True, tabsize: int = 2) \
               -> ProofNode:  
+  if not proof_str:
+    proof_str = '1. .hyp\nproves\n2. '
   lines = get_str_li(proof_str, tabsize) 
   #^ List of strings, where the subproofs are indicated by double brace pairs.
   #^ Each element of the list corresponds to a line of the proof.

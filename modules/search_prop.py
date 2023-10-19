@@ -1,3 +1,5 @@
+# type: ignore
+
 try:
   from modules.validate_prop import *
 except ImportError:
@@ -14,7 +16,11 @@ class ProofNodeS(ProofNode):
   ''' S stands for Search. This class supplies numerous methods for 
       proof searching and editing.
   '''
-  def __init__(self, p_node: ProofNode):
+  def __init__(self, p_node: ProofNode | None=None):
+    if p_node is None:
+      p_node = parse_fitch()
+    assert isinstance(p_node, ProofNode), \
+      "ProofNodeS.__init__(): p_node must be a ProofNode instance."
     self.label = p_node.label
     self.children = p_node.children
     self.index = p_node.index
@@ -598,36 +604,120 @@ class ProofNodeS(ProofNode):
   #endregion Annotation search methods
 
   #region Edit methods
-  def clear_formula(self, pos: tree_index) -> None:
-    """ Clear the formula at pos, which is a formula node. """
-    self.update_formula(pos, Formula())
+  def clear_formula(self, pos) -> None:
+    """ Make the node at pos a blank line. 
+        The node must be a formula node."""
+    p_node = self.get_p_node(pos)
+    p_node.label.type = 'blank.hypo' if p_node.label.is_hyp \
+                                     else 'blank.conc'
+    p_node.label.formula = None
+    p_node.label.line = ""
+    p_node.label.ann = None
+    self.validate_all()
 
-  def update_formula(self, pos: tree_index, new_fmla: Formula) -> None:
-    """ Update the formula at pos, which is a formula node. """
-    pass
+  def update_formula(self, pos, new_fmla: Formula) -> None:
+    import copy
+    """ The line can be a formula, a comment or a blank line. 
+        Non-formula line becomes a formula line, and the content
+          is lost. 
+        Formula line's formula is replaced with new_fmla.
+        Its ann remains unchanged. """
+    p_node = self.get_p_node(pos)
+    p_node.label.type = 'formula'
+    p_node.label.formula = copy.deepcopy(new_fmla)
+    p_node.label.line = f"{new_fmla}\t .{p_node.label.ann}"
+    self.validate_all()
 
-  def clear_ann(self, pos: tree_index) -> None: 
+  def clear_ann(self, pos) -> None: 
     """ Clear the annotation at pos, which is a formula node. """
     self.annotate(pos, Ann())
     
-  def annotate(self, pos: tree_index, ann: Ann) -> None: 
+  def annotate(self, pos, ann: Ann) -> None: 
+    import copy
     """ Annotate the formula at pos with ann.
-        pos must be the t_index of a formula node. """
+        pos must be the t_index of a conclusion formula node. """
     p_node = self.get_p_node(pos)
-    p_node.label.ann = ann
+    l_num = p_node.line_num
+    assert p_node.label.type == 'formula', \
+      f"annotate(): pos {pos} is not a formula node."
+    assert not p_node.label.is_hyp, \
+      f"annotate(): pos '{l_num}' is a hypothesis, which is not allowed."
+    p_node.label.ann = copy.deepcopy(ann)
+    p_node.validated = self.verified(l_num)
 
-  def insert_node(self, pos: tree_index, p_node: ProofNode, is_hyp=False) \
-                  -> None:
-    """ Insert p_node in the proof tree so that it's t_index becomes pos.
-      Nodes at and after pos are shifted to the right.
-      line_num, t_index as well as premises in annotations of the shifted
-      nodes are updated accordingly. 
-
-      is_hyp := True is rarely used. When multiple hypotheses are used
-      in the level 0 proof, and we want to append a new hypothesis at 
-      the end, then we need to set is_hyp to True.
+  def insert_node(self, pos, p_node: ProofNode | None=None, 
+          go_above: bool=True, level_down: bool=False) -> bool:
+    """ 
+      pos may be a position of a line or a subproof.
+      p_node itself may be a line or a subproof.
+      If go_above is True, then insert p_node so that its position 
+        becomes pos. Nodes at and after pos are shifted to the right.
+      If go_above is False, then add p_node so that its position
+        becomes the younger sibling adjacent to pos. Nodes after pos
+        are shifted to the right.
+      level_down is used only when go_above is False and pos is the 
+        youngest kid (and thus a conclusion) and pos is not in the 
+        base level. If any of these three conditions is not met, then 
+        the value of level_down is ignored. If all these conditions 
+        are met, then if level_down is True, then the new node is 
+        added one level below.
+      Normally, if pos is in hypothesis/conclusion, then the new node 
+        goes into hypothesis/conclusion respectively. But subproofs
+        can have only one hypothesis. So if go_above is True, and pos is 
+        in the hypothesis of a subproof, then we let the new node go into
+        the conclusion part one level below.
+        If pos is in hypothesis of a subproof and go_above is False, then
+        and only then this method returns False.
+      If pos is the position of the last conclusion of a subproof, then 
+      sometimes we want to add a line one level below. In this case,
+        set level_down to True.
+      Updating line_num and t_index is easy. But updating the premises
+        of the shifted lines needs some work.
+      If p_node is None, then a blank line is inserted.
     """
-    pass
+    p_node_insert = self.get_p_node(pos)
+    assert len(p_node_insert.index) > 1, \
+      f"insert_node(): You cannot insert a node at the root."
+    # determine the position of the parent node and the rank of
+    # the node to be inserted. (first kid's rank is 0)
+    pos_parent = p_node_insert.index[:-1]
+    rank_insert = p_node_insert.index[-1]
+
+    pos_in_hyp = p_node_insert.label.is_hyp
+    if pos_in_hyp and len(p_node_insert.index) >= 3:
+      if go_above:
+        # subproof's hypothesis part has only one line.
+        # insert a blank line in the conclusion part of one level below
+        pos_parent = p_node_insert.index[:-2]
+        rank_insert = p_node_insert.index[-2]
+        pos_in_hyp = False
+      else:
+        # inserting a node below a hypothesis is not allowed.
+        return False
+    parent_node = self.get_p_node(pos_parent)
+    if not go_above:
+      if level_down: 
+        if len(parent_node.children) == rank_insert + 1:
+          # pos is the youngest kid
+          rank_insert = pos_parent[-1] + 1
+          pos_parent = pos_parent[:-1]
+          parent_node = self.get_p_node(pos_parent)
+      else:
+        rank_insert += 1
+
+    if p_node is None:
+      # insert a blank line
+      label0 = NodeLabel(type='blank.hypo') if pos_in_hyp \
+               else NodeLabel(type='blank.conc')
+      p_node = ProofNode(label=label0)
+
+    parent_node.children.insert(rank_insert, p_node)
+
+    self.build_index()
+    self.index_dict = self.build_index_dict()
+    self.validate_all()
+
+    return True
 
   def delete_node(self, pos: tree_index) -> None:
     """ Delete the p_node in the proof tree at pos.
