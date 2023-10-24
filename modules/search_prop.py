@@ -1,5 +1,3 @@
-# type: ignore
-
 try:
   from modules.validate_prop import *
 except ImportError:
@@ -12,14 +10,14 @@ def mykey(x: str):
   """ This is a key function for sorting the list of line numbers. """
   return int(x.split("-")[0])
 
-class ProofNodeS(ProofNode):
+class ProofNodeS(ProofNode): # type: ignore
   ''' S stands for Search. This class supplies numerous methods for 
       proof searching and editing.
   '''
-  def __init__(self, p_node: ProofNode | None=None):
-    if p_node is None:
+  def __init__(self, p_node: ProofNode | None=None): # type: ignore
+    if p_node is None: # type: ignore
       p_node = parse_fitch()
-    assert isinstance(p_node, ProofNode), \
+    assert isinstance(p_node, ProofNode),  \
       "ProofNodeS.__init__(): p_node must be a ProofNode instance."
     self.label = p_node.label
     self.children = p_node.children
@@ -42,8 +40,8 @@ class ProofNodeS(ProofNode):
       tree_index = self.index_dict[key] 
       #^ key is line_num. e.g., '6', '8-12'
       p_node = self.get_p_node(tree_index) 
-      if p_node.label.type == 'formula' and not p_node.label.is_hyp \
-            and not self.verified(key):
+      if p_node.label.type == LabelType.FORMULA and \
+            not p_node.label.is_hyp and not self.verified(key):
         #^ self.verified(key) is used instead of more speedy 
         # p_node.validated. This is sort of a double check.
         fmla_node = p_node.label.formula.ast
@@ -80,12 +78,12 @@ class ProofNodeS(ProofNode):
         print("\nAll formulas have been validated.\n")
         break # while loop
 
-  def try_rule(self, rule: RuleInfer, ret_val, verbosity) -> bool:
+  def try_rule(self, rule: RuleInfer, ret_val, verbosity) -> bool: # type: ignore
     ''' ret_val is the return value of self.fmla_to_validate()
         conc_index is the tree_index of the conclusion formula
         p_conn is the principal connective of the conclusion formula
     '''
-    match rule:
+    match rule: # type: ignore
       case RuleInfer.LEM:
         return self.try_LEM(ret_val, verbosity)
       case RuleInfer.REPEAT:
@@ -117,7 +115,7 @@ class ProofNodeS(ProofNode):
       case RuleInfer.HYP:
         return False
       case _:
-        raise ValueError(f"Rule {rule} is not supported.")
+        raise ValueError(f"Rule {rule} is not supported.") # type: ignore
 
   #region Annotation search methods
   def prepare_search_ann(self, ret_val):
@@ -192,7 +190,7 @@ class ProofNodeS(ProofNode):
     for line_num, t_idx in reversed(self.index_dict.items()):
       if self.is_earlier(t_idx, conc_idx):
         p_node = self.get_p_node(t_idx)
-        if p_node.label.type == 'formula':
+        if p_node.label.type == LabelType.FORMULA:
           node = p_node.label.formula.ast
           if conc_fmla.verified_by(RuleInfer.REPEAT,[node]):
             ann_str = f"{rule} {line_num}"
@@ -214,7 +212,7 @@ class ProofNodeS(ProofNode):
       if not self.is_earlier(t_idx1, conc_idx):
         continue
       p_node1 = self.get_p_node(t_idx1)
-      if p_node1.label.type != 'formula':
+      if p_node1.label.type != LabelType.FORMULA:
         continue
       # To expedite the search process, we selectively choose formulas 
       #   in the form of 'not alpha'.
@@ -226,7 +224,7 @@ class ProofNodeS(ProofNode):
         if not self.is_earlier(t_idx2, conc_idx) or t_idx2 == t_idx1:
           continue
         p_node2 = self.get_p_node(t_idx2)
-        if p_node2.label.type != 'formula':
+        if p_node2.label.type != LabelType.FORMULA:
           continue
         if p_node2.label.formula.ast == node1:
         # slower code commented out
@@ -276,7 +274,7 @@ class ProofNodeS(ProofNode):
       if not self.is_earlier(t_idx1, conc_idx):
         continue
       p_node1 = self.get_p_node(t_idx1)
-      if p_node1.label.type != 'formula':
+      if p_node1.label.type != LabelType.FORMULA:
         continue
       # To expedite the search process, we selectively choose formulas 
       #   which is a subformula of the conclusion formula.
@@ -288,7 +286,7 @@ class ProofNodeS(ProofNode):
         if not self.is_earlier(t_idx2, t_idx1):
           continue
         p_node2 = self.get_p_node(t_idx2)
-        if p_node2.label.type != 'formula':
+        if p_node2.label.type != LabelType.FORMULA:
           continue
         if conc_fmla.verified_by(RuleInfer.AND_INTRO,
             [p_node1.label.formula.ast, p_node2.label.formula.ast]):
@@ -316,7 +314,7 @@ class ProofNodeS(ProofNode):
     for line_num, t_idx in reversed(self.index_dict.items()):
       if self.is_earlier(t_idx, conc_idx):
         p_node = self.get_p_node(t_idx)
-        if p_node.label.type == 'formula':
+        if p_node.label.type == LabelType.FORMULA:
           node = p_node.label.formula.ast
           if conc_fmla.verified_by(RuleInfer.OR_INTRO,[node]):
             ann_str = f"{rule} {line_num}"
@@ -359,11 +357,11 @@ class ProofNodeS(ProofNode):
       if not self.is_earlier(t_idx1, conc_idx):
         continue
       p_node1 = self.get_p_node(t_idx1)
-      if not p_node1.label.type in {'formula', 'subproof'}:
+      if not p_node1.label.type in {LabelType.FORMULA, LabelType.SUBPROOF}:
         continue
       # To expedite the search process, if the premise is a formula but
       # not an implication formula, then we skip it.
-      if p_node1.label.type == 'formula' and not \
+      if p_node1.label.type == LabelType.FORMULA and not \
           FormulaProp(p_node1.label.formula.ast).\
             is_fmla_type(Connective.IMP):
         continue
@@ -371,13 +369,13 @@ class ProofNodeS(ProofNode):
         if not self.is_earlier(t_idx2, conc_idx) or t_idx2 == t_idx1:
           continue
         p_node2 = self.get_p_node(t_idx2)
-        if p_node2.label.type not in {'formula', 'subproof'}:
+        if p_node2.label.type not in {LabelType.FORMULA, LabelType.SUBPROOF}:
           continue
-        if p_node1.label.type == 'subproof':
+        if p_node1.label.type == LabelType.SUBPROOF:
           node1 = self.subproof2implication(line_num1)
         else:
           node1 = p_node1.label.formula.ast
-        if p_node2.label.type == 'subproof':
+        if p_node2.label.type == LabelType.SUBPROOF:
           node2 = self.subproof2implication(line_num2)
         else:
           node2 = p_node2.label.formula.ast
@@ -403,7 +401,7 @@ class ProofNodeS(ProofNode):
     for line_num, t_idx in reversed(self.index_dict.items()):
       if self.is_earlier(t_idx, conc_idx):
         p_node = self.get_p_node(t_idx)
-        if p_node.label.type == 'formula':
+        if p_node.label.type == LabelType.FORMULA:
           prem_fmla_p = FormulaProp(p_node.label.formula.ast)
           if prem_fmla_p.is_fmla_type(Connective.BOT):
             ann_str = f"{rule} {line_num}"
@@ -438,7 +436,7 @@ class ProofNodeS(ProofNode):
     for line_num, t_idx in reversed(self.index_dict.items()):
       if self.is_earlier(t_idx, conc_idx):
         p_node = self.get_p_node(t_idx)
-        if p_node.label.type == 'formula':
+        if p_node.label.type == LabelType.FORMULA:
           node = p_node.label.formula.ast
           if conc_fmla.verified_by(RuleInfer.AND_ELIM,[node]):
             ann_str = f"{rule} {line_num}"
@@ -461,7 +459,7 @@ class ProofNodeS(ProofNode):
         continue
       p_node1 = self.get_p_node(t_idx1)
       # first, we look for a disjunction formula
-      if p_node1.label.type != 'formula' or \
+      if p_node1.label.type != LabelType.FORMULA or \
             not p_node1.label.formula.is_fmla_type(Connective.OR):
         continue
       node1 = p_node1.label.formula.ast
@@ -473,9 +471,9 @@ class ProofNodeS(ProofNode):
         if not self.is_earlier(t_idx2, conc_idx) or t_idx2 == t_idx1:
           continue
         p_node2 = self.get_p_node(t_idx2)
-        if p_node2.label.type not in {'formula', 'subproof'}:
+        if p_node2.label.type not in {LabelType.FORMULA, LabelType.SUBPROOF}:
           continue
-        if p_node2.label.type == 'subproof':
+        if p_node2.label.type == LabelType.SUBPROOF:
           node2 = self.subproof2implication(line_num2)
         else:
           node2 = p_node2.label.formula.ast
@@ -491,9 +489,9 @@ class ProofNodeS(ProofNode):
           if not self.is_earlier(t_idx3, t_idx2) or t_idx3 == t_idx1:
             continue
           p_node3 = self.get_p_node(t_idx3)
-          if p_node3.label.type not in {'formula', 'subproof'}:
+          if p_node3.label.type not in {LabelType.FORMULA, LabelType.SUBPROOF}:
             continue
-          if p_node3.label.type == 'subproof':
+          if p_node3.label.type == LabelType.SUBPROOF:
             node3 = self.subproof2implication(line_num3)
           else:
             node3 = p_node3.label.formula.ast
@@ -532,7 +530,7 @@ class ProofNodeS(ProofNode):
         continue
       p_node1 = self.get_p_node(t_idx1)
       # first, we look for an implication formula
-      if p_node1.label.type != 'formula' or \
+      if p_node1.label.type != LabelType.FORMULA or \
          not p_node1.label.formula.is_fmla_type(Connective.IMP):
         continue
       node1 = p_node1.label.formula.ast
@@ -545,7 +543,7 @@ class ProofNodeS(ProofNode):
         if not self.is_earlier(t_idx2, conc_idx) or t_idx2 == t_idx1:
           continue
         p_node2 = self.get_p_node(t_idx2)
-        if p_node2.label.type != 'formula':
+        if p_node2.label.type != LabelType.FORMULA:
           continue
         if p_node2.label.formula.ast == node_antecedent:
           # make sure line_num1 > line_num2
@@ -571,7 +569,7 @@ class ProofNodeS(ProofNode):
         continue
       p_node1 = self.get_p_node(t_idx1)
       # first, we look for an iff formula
-      if p_node1.label.type != 'formula' or \
+      if p_node1.label.type != LabelType.FORMULA or \
          not p_node1.label.formula.is_fmla_type(Connective.IFF):
         continue
       node1 = p_node1.label.formula.ast
@@ -586,7 +584,7 @@ class ProofNodeS(ProofNode):
         if not self.is_earlier(t_idx2, conc_idx) or t_idx2 == t_idx1:
           continue
         p_node2 = self.get_p_node(t_idx2)
-        if p_node2.label.type != 'formula':
+        if p_node2.label.type != LabelType.FORMULA:
           continue
         if p_node2.label.formula.ast == prem_node_other:
           # make sure line_num1 > line_num2
@@ -604,52 +602,44 @@ class ProofNodeS(ProofNode):
   #endregion Annotation search methods
 
   #region Edit methods
-  def clear_formula(self, pos) -> None:
-    """ Make the node at pos a blank line. 
-        The node must be a formula node."""
-    p_node = self.get_p_node(pos)
-    p_node.label.type = 'blank.hypo' if p_node.label.is_hyp \
-                                     else 'blank.conc'
-    p_node.label.formula = None
-    p_node.label.line = ""
-    p_node.label.ann = None
-    self.validate_all()
-
-  def update_formula(self, pos, new_fmla: Formula) -> None:
+  def update_formula(self, pos, new_fmla: Formula) -> None: # type: ignore
     import copy
-    """ The line can be a formula, a comment or a blank line. 
+    """ The line can be a formula(hyp or conc), a comment or a blank line. 
         Non-formula line becomes a formula line, and the content
           is lost. 
         Formula line's formula is replaced with new_fmla.
         Its ann remains unchanged. """
     p_node = self.get_p_node(pos)
-    p_node.label.type = 'formula'
-    p_node.label.formula = copy.deepcopy(new_fmla)
-    p_node.label.line = f"{new_fmla}\t .{p_node.label.ann}"
+    p_node.label.type = LabelType.FORMULA
+    p_node.label.formula = copy.deepcopy(new_fmla) # type: ignore
+    p_node.label.line = f"{new_fmla}\t .{p_node.label.ann}" # type: ignore
     self.validate_all()
 
-  def clear_ann(self, pos) -> None: 
-    """ Clear the annotation at pos, which is a formula node. """
-    self.annotate(pos, Ann())
-    
-  def annotate(self, pos, ann: Ann) -> None: 
+  def annotate(self, pos, ann: Ann) -> None: # type: ignore
     import copy
     """ Annotate the formula at pos with ann.
         pos must be the t_index of a conclusion formula node. """
     p_node = self.get_p_node(pos)
     l_num = p_node.line_num
-    assert p_node.label.type == 'formula', \
+    assert p_node.label.type == LabelType.FORMULA, \
       f"annotate(): pos {pos} is not a formula node."
     assert not p_node.label.is_hyp, \
-      f"annotate(): pos '{l_num}' is a hypothesis, which is not allowed."
+      f"annotate(): pos '{l_num}' is a hypothesis, which cannot be annotated."
+    assert isinstance(ann, Ann), \
+      f"annotate(): ann must be an Ann object."
     p_node.label.ann = copy.deepcopy(ann)
     p_node.validated = self.verified(l_num)
 
-  def insert_node(self, pos, p_node: ProofNode | None=None, 
-          go_above: bool=True, level_down: bool=False) -> bool:
+  def clear_ann(self, pos) -> None: 
+    """ Clear the annotation at pos, which is a formula node. """
+    self.annotate(pos, Ann())
+    
+  def insert_node(self, pos, p_node: ProofNode | None=None, # type: ignore
+          go_above: bool=True, level_down: bool=False) -> None:
     """ 
       pos may be a position of a line or a subproof.
       p_node itself may be a line or a subproof.
+      If p_node is None, then a blank line is inserted.
       If go_above is True, then insert p_node so that its position 
         becomes pos. Nodes at and after pos are shifted to the right.
       If go_above is False, then add p_node so that its position
@@ -667,33 +657,49 @@ class ProofNodeS(ProofNode):
         in the hypothesis of a subproof, then we let the new node go into
         the conclusion part one level below.
         If pos is in hypothesis of a subproof and go_above is False, then
-        and only then this method returns False.
+        and only then this method raises an exception.
       If pos is the position of the last conclusion of a subproof, then 
       sometimes we want to add a line one level below. In this case,
         set level_down to True.
-      Updating line_num and t_index is easy. But updating the premises
-        of the shifted lines needs some work.
-      If p_node is None, then a blank line is inserted.
+      Updating line_num and t_index is easy. Just do the following:
+        self.build_index()
+        self.index_dict = self.build_index_dict()
+      But updating the premises of the shifted lines needs some work.
     """
-    p_node_insert = self.get_p_node(pos)
-    assert len(p_node_insert.index) > 1, \
+    p_node_target = self.get_p_node(pos)
+    target_index = p_node_target.index
+    target_ln = p_node_target.line_num
+    assert len(target_index) > 1, \
       f"insert_node(): You cannot insert a node at the root."
+    pos_in_hyp = p_node_target.label.is_hyp
+
+    if p_node is not None: # type: ignore
+      assert isinstance(p_node, ProofNode), \
+        f"insert_node(): p_node must be a ProofNode."
+    else: # insert a blank line
+      label0 = NodeLabel(type=LabelType.BLANK_HYP) if pos_in_hyp \
+               else NodeLabel(type=LabelType.BLANK_CONC)
+      p_node = ProofNode(label=label0)
+
     # determine the position of the parent node and the rank of
     # the node to be inserted. (first kid's rank is 0)
-    pos_parent = p_node_insert.index[:-1]
-    rank_insert = p_node_insert.index[-1]
+    pos_parent = target_index[:-1]
+    rank_insert = target_index[-1]
 
-    pos_in_hyp = p_node_insert.label.is_hyp
-    if pos_in_hyp and len(p_node_insert.index) >= 3:
+    if pos_in_hyp and p_node.label.type == LabelType.SUBPROOF:
+      raise Exception("insert_node(): Cannot insert a subproof into"
+                      " a hypothesis.")
+    if pos_in_hyp and len(target_index) >= 3:
       if go_above:
         # subproof's hypothesis part has only one line.
         # insert a blank line in the conclusion part of one level below
-        pos_parent = p_node_insert.index[:-2]
-        rank_insert = p_node_insert.index[-2]
+        pos_parent = target_index[:-2]
+        rank_insert = target_index[-2]
         pos_in_hyp = False
       else:
         # inserting a node below a hypothesis is not allowed.
-        return False
+        raise Exception("insert_node(): Cannot insert a node below"
+                        " within a hypothesis of a subproof.")
     parent_node = self.get_p_node(pos_parent)
     if not go_above:
       if level_down: 
@@ -705,27 +711,101 @@ class ProofNodeS(ProofNode):
       else:
         rank_insert += 1
 
-    if p_node is None:
-      # insert a blank line
-      label0 = NodeLabel(type='blank.hypo') if pos_in_hyp \
-               else NodeLabel(type='blank.conc')
-      p_node = ProofNode(label=label0)
-
     parent_node.children.insert(rank_insert, p_node)
 
     self.build_index()
     self.index_dict = self.build_index_dict()
+    n_lines = num_nodes(p_node) # count terminal nodes only
+    self.adjust_premises(target_index, target_ln, n_lines, opt='insert')
     self.validate_all()
 
-    return True
-
-  def delete_node(self, pos: tree_index) -> None:
+  def delete_node(self, pos) -> None:
     """ Delete the p_node in the proof tree at pos.
       Nodes after pos are shifted to the left.
       line_num, t_index as well as premises in annotations of the shifted
       nodes are updated accordingly. 
+
+      In subproofs, there should always be exactly one hypothesis.
+      Therefore, if the position `pos` is within the hypothesis of a 
+      subproof, only the formula is cleared, without deleting the 
+      entire node.
+        Similarly, if the position `pos` is within the conclusion of a
+      subproof, and the conclusion part comprises only one line, then
+      the formula is cleared, without deleting the entire node.
     """
-    pass
+    p_node_del = self.get_p_node(pos)
+    del_index = p_node_del.index
+    del_ln = p_node_del.line_num
+    #^ In this way, we can make sure that t_index is tree_index.
+    #^ Also this checks whether pos is a valid position.
+    parent_index = del_index[:-1]
+    parent_node = self.get_p_node(parent_index)
+    if (parent_node.num_nodes_hyp() == 1 and p_node_del.label.is_hyp) or \
+       (parent_node.num_nodes_conc() == 1 and not p_node_del.label.is_hyp):
+      self.clear_node(pos)
+      return
+    rank_delete = del_index[-1] 
+    parent_node.children.pop(rank_delete)
+    self.build_index()
+    self.index_dict = self.build_index_dict()
+    self.adjust_premises(del_index, del_ln, 1, opt='delete')
+    self.validate_all()
+
+  def clear_node(self, pos) -> None:
+    """ Make the node at pos a blank formula. 
+        The node may be either a formula or a subproof.
+        Blank formula means 
+          hyp case: top .hyp
+          conc case: top <empty annotation>"""
+    p_node = self.get_p_node(pos)
+    p_node.label.type = LabelType('formula')
+    p_node.label.formula = Formula()
+    if p_node.label.is_hyp:
+      p_node.label.line = "top .hyp"
+      p_node.label.ann = Ann('hyp')
+    else:
+      p_node.label.line = "top ."
+      p_node.label.ann = Ann()
+
+    self.validate_all()
+
+  def replace_node(self, pos, p_node) -> None:
+    assert isinstance(p_node, ProofNode), \
+      f"insert_node(): p_node must be a ProofNode."
+    p_node_target = self.get_p_node(pos)
+    if p_node_target.label.is_hyp and \
+       p_node.label.type == LabelType.SUBPROOF:
+      raise Exception("replace_node(): Cannot replace a hypothesis" 
+                      " with a subproof.")
+    t_index = p_node_target.index
+    parent_index = t_index[:-1]
+    parent_node = self.get_p_node(parent_index)
+    rank_target = t_index[-1]
+    parent_node.children[rank_target] = p_node
+    self.build_index()
+    self.index_dict = self.build_index_dict()
+    self.validate_all()
+
+  def adjust_premises(self, target_index, target_ln, n_lines, opt) -> None:
+    ''' Adjust the premises of the annotations of the lines after t_index.
+      t_index may be a position of a line or a subproof.
+      In the latter case, and in this case only, we have n_lines >= 2.
+    '''
+    for v_ln in self.index_dict: # type: ignore
+      p_node = self.get_p_node(v_ln)
+      if p_node.label.type != LabelType.FORMULA or p_node.label.is_hyp:
+        continue
+      if v_ln >= target_ln and not li_extends(p_node.index, target_index): 
+          #^ do not use is_earlier() here
+          ann = p_node.label.ann
+          if opt == 'insert':
+            if v_ln != target_ln:
+              ann.adjust_premises(self, target_ln, v_ln, n_lines, opt)
+          elif opt == 'delete':
+            ann.adjust_premises(self, target_ln, v_ln, n_lines, opt)
+          else:
+            raise Exception("adjust_premises(): opt must be either"
+                            " 'insert' or 'delete'.")
 
   # Using the editing methods above, we define the following.
 
