@@ -12,7 +12,7 @@ def mykey(x: str):
 
 class ProofNodeS(ProofNode): # type: ignore
   ''' S stands for Search. This class supplies numerous methods for 
-      proof searching and editing.
+      proof editing and searching.
   '''
   def __init__(self, p_node: ProofNode | None=None): # type: ignore
     if p_node is None: # type: ignore
@@ -35,7 +35,8 @@ class ProofNodeS(ProofNode): # type: ignore
         If all formulas have been validated, then return the 
           empty tuple().
         self must be the root of the whole proof. """
-    
+    assert isinstance(self.index_dict, dict), \
+      "fmla_to_validate(): self.index_dict must be a dict."
     for key in reversed(self.index_dict):
       tree_index = self.index_dict[key] 
       #^ key is line_num. e.g., '6', '8-12'
@@ -602,6 +603,176 @@ class ProofNodeS(ProofNode): # type: ignore
   #endregion Annotation search methods
 
   #region Edit methods
+  def insert_node(self, pos: int | str | List[int], 
+          p_node: ProofNode | None=None, # type: ignore
+          go_above: bool=True, level_down: bool=False) -> None:
+    """ 
+      pos may be a position of a line or a subproof.
+      p_node itself may be a line or a subproof too.
+      If p_node is None, then a blank line is inserted.
+      If go_above is True, then insert p_node so that its position 
+        becomes pos. Nodes at and after pos are shifted to the right.
+      If go_above is False, then add p_node so that its position
+        becomes the younger sibling adjacent to pos. Nodes after pos
+        are shifted to the right.
+      level_down is used only when go_above is False and pos is the 
+        youngest kid (and thus a conclusion) and pos is not in the 
+        base level. If any of these three conditions is not met, then 
+        the value of level_down is ignored. If all these conditions 
+        are met and if level_down is True, then the new node is added 
+        one level below.
+      Normally, if pos is in hypothesis/conclusion, then the new node 
+        goes into hypothesis/conclusion respectively. But subproofs
+        can have only one hypothesis. So if go_above is True, and pos is 
+        in the hypothesis of a subproof, then we let the new node go into
+        the conclusion part of the parent subproof which is one level below.
+        But even in this case, if the new node is a comment, then it goes
+        into the hypothesis part of the current subproof.
+        If pos is in hypothesis of a subproof and go_above is False, then
+        and only then this method raises an exception.
+      If pos is the position of the last conclusion of a subproof, then 
+      sometimes we want to add a line one level below. In this case,
+        set level_down to True.
+      Updating line_num and t_index is easy. Just do the following:
+        self.build_index()
+        self.index_dict = self.build_index_dict()
+      But updating the premises of the shifted lines needs some work.
+    """
+    p_node_target = self.get_p_node(pos)
+    target_index = p_node_target.index
+    target_ln = p_node_target.line_num
+    assert len(target_index) > 1, \
+      f"insert_node(): You cannot insert a node at the root."
+    pos_in_hyp = p_node_target.label.is_hyp
+
+    # determine the position of the parent node and the rank of
+    # the node to be inserted. (first kid's rank is 0)
+    pos_parent = target_index[:-1]
+    rank_insert = target_index[-1]
+
+    if pos_in_hyp and p_node is not None \
+        and p_node.label.type == LabelType.SUBPROOF:
+      raise Exception("insert_node(): Cannot insert a subproof into"
+                      " a hypothesis.")
+    if pos_in_hyp and len(target_index) >= 3:
+      if go_above:
+        if p_node is None or \
+           p_node.label.type != LabelType.COMMENT_HYP:
+          # subproof's hypothesis part has only one line.
+          # insert the line in the conclusion part of one level below
+          pos_parent = target_index[:-2]
+          rank_insert = target_index[-2]
+          pos_in_hyp = False
+      else:
+        # inserting a node below a hypothesis is not allowed.
+        raise Exception("insert_node(): Cannot insert a node below"
+                        " within a hypothesis of a subproof.")
+
+    if p_node is not None: # type: ignore
+      assert isinstance(p_node, ProofNode), \
+        f"insert_node(): p_node must be a ProofNode."
+    else: # insert a blank line
+      label0 = NodeLabel(type=LabelType.BLANK_HYP) if pos_in_hyp \
+               else NodeLabel(type=LabelType.BLANK_CONC)
+      p_node = ProofNode(label=label0)
+
+    parent_node = self.get_p_node(pos_parent)
+    if not go_above:
+      if level_down: 
+        if len(parent_node.children) == rank_insert + 1:
+          # pos is the youngest kid
+          rank_insert = pos_parent[-1] + 1
+          pos_parent = pos_parent[:-1] # = target_insert[:-2]
+          parent_node = self.get_p_node(pos_parent)
+      else:
+        rank_insert += 1
+
+    # the insertion is done here
+    parent_node.children.insert(rank_insert, p_node)
+
+    self.build_index()
+    self.index_dict = self.build_index_dict()
+    n_lines = num_nodes(p_node) # count terminal nodes only
+    self.adjust_premises(target_index, target_ln, n_lines, 
+                         opt='insert', go_above=go_above)
+    #^ Actually, it would have been a little bit easier if we adjusted 
+    #^ premises before the insertion action.
+
+    self.validate_all()
+
+  def delete_node(self, pos: int | str | List[int], bReturn=False) -> None:
+    """ Delete the p_node in the proof tree at pos.
+      Nodes after pos are shifted to the left.
+      line_num, t_index as well as premises in annotations of the shifted
+      nodes are updated accordingly. 
+
+      In subproofs, there should always be exactly one hypothesis.
+      Therefore, if the position `pos` is within the hypothesis of a 
+      subproof, only the formula is cleared, without deleting the 
+      entire node.
+        Similarly, if the position `pos` is within the conclusion of a
+      subproof, and the conclusion part comprises only one line, then
+      the formula is cleared, without deleting the entire node.
+    """
+    p_node_del = self.get_p_node(pos)
+    del_index = p_node_del.index
+    del_ln = p_node_del.line_num
+    #^ In this way, we can make sure that t_index is tree_index.
+    #^ Also this checks whether pos is a valid position.
+    parent_index = del_index[:-1]
+    parent_node = self.get_p_node(parent_index)
+    if (parent_node.num_nodes_hyp() == 1 and p_node_del.label.is_hyp) or \
+       (parent_node.num_nodes_conc() == 1 and not p_node_del.label.is_hyp):
+      self.clear_node(pos)
+      return
+    rank_delete = del_index[-1] 
+    parent_node.children.pop(rank_delete)
+    self.build_index()
+    self.index_dict = self.build_index_dict()
+    n_lines = num_nodes(p_node_del) # count terminal nodes only
+    self.adjust_premises(del_index, del_ln, n_lines, opt='delete')
+    self.validate_all()
+
+    if bReturn:
+      return p_node_del
+
+  def adjust_premises(self, target_index, target_ln: str, n_lines, 
+                      opt, go_above=True) -> None:
+    ''' When a node is inserted or deleted, we need to adjust the premises 
+      in the annotations of the lines after target_ln.
+        opt is either 'insert' or 'delete'.
+        target_ln is a string which represents a position of a line or 
+      a subproof. In the latter case, and in this case only, the value of
+      the argument n_lines is >= 2. 
+        This method is not recursively called. It calls the Ann class's
+      adjust_premises() method.
+    '''
+    
+    if '-' in target_ln: 
+      target_ln = target_ln.split('-')[0] # hyp line of the subproof
+    for v_ln in self.index_dict: # type: ignore
+      # self.index_dict is of the tree after the insertion/deletion
+      p_node = self.get_p_node(v_ln)
+      if p_node.label.type != LabelType.FORMULA or p_node.label.is_hyp:
+        continue
+      if not int(v_ln) >= int(target_ln):
+        #^ do not use is_earlier() here
+        continue
+      ann = p_node.label.ann
+      if not isinstance(ann, Ann) or not ann.premise:
+        continue
+      if opt == 'delete': # easier case
+        ann.adjust_premises(self, target_ln, v_ln, n_lines, opt)
+      elif opt == 'insert':
+        if int(v_ln) >= (e := int(target_ln) + n_lines):
+           target_index1 = target_index[:-1] + [target_index[-1] + 1]
+           if go_above or (int(v_ln) > e and 
+                           not li_extends(p_node.index, target_index1)):
+             ann.adjust_premises(self, target_ln, v_ln, n_lines, opt)
+      else:
+        raise Exception("adjust_premises(): opt must be either"
+                        " 'insert' or 'delete'.")
+
   def update_formula(self, pos, new_fmla: Formula) -> None: # type: ignore
     import copy
     """ The line can be a formula(hyp or conc), a comment or a blank line. 
@@ -634,123 +805,6 @@ class ProofNodeS(ProofNode): # type: ignore
     """ Clear the annotation at pos, which is a formula node. """
     self.annotate(pos, Ann())
     
-  def insert_node(self, pos, p_node: ProofNode | None=None, # type: ignore
-          go_above: bool=True, level_down: bool=False) -> None:
-    """ 
-      pos may be a position of a line or a subproof.
-      p_node itself may be a line or a subproof.
-      If p_node is None, then a blank line is inserted.
-      If go_above is True, then insert p_node so that its position 
-        becomes pos. Nodes at and after pos are shifted to the right.
-      If go_above is False, then add p_node so that its position
-        becomes the younger sibling adjacent to pos. Nodes after pos
-        are shifted to the right.
-      level_down is used only when go_above is False and pos is the 
-        youngest kid (and thus a conclusion) and pos is not in the 
-        base level. If any of these three conditions is not met, then 
-        the value of level_down is ignored. If all these conditions 
-        are met, then if level_down is True, then the new node is 
-        added one level below.
-      Normally, if pos is in hypothesis/conclusion, then the new node 
-        goes into hypothesis/conclusion respectively. But subproofs
-        can have only one hypothesis. So if go_above is True, and pos is 
-        in the hypothesis of a subproof, then we let the new node go into
-        the conclusion part one level below.
-        If pos is in hypothesis of a subproof and go_above is False, then
-        and only then this method raises an exception.
-      If pos is the position of the last conclusion of a subproof, then 
-      sometimes we want to add a line one level below. In this case,
-        set level_down to True.
-      Updating line_num and t_index is easy. Just do the following:
-        self.build_index()
-        self.index_dict = self.build_index_dict()
-      But updating the premises of the shifted lines needs some work.
-    """
-    p_node_target = self.get_p_node(pos)
-    target_index = p_node_target.index
-    target_ln = p_node_target.line_num
-    assert len(target_index) > 1, \
-      f"insert_node(): You cannot insert a node at the root."
-    pos_in_hyp = p_node_target.label.is_hyp
-
-    if p_node is not None: # type: ignore
-      assert isinstance(p_node, ProofNode), \
-        f"insert_node(): p_node must be a ProofNode."
-    else: # insert a blank line
-      label0 = NodeLabel(type=LabelType.BLANK_HYP) if pos_in_hyp \
-               else NodeLabel(type=LabelType.BLANK_CONC)
-      p_node = ProofNode(label=label0)
-
-    # determine the position of the parent node and the rank of
-    # the node to be inserted. (first kid's rank is 0)
-    pos_parent = target_index[:-1]
-    rank_insert = target_index[-1]
-
-    if pos_in_hyp and p_node.label.type == LabelType.SUBPROOF:
-      raise Exception("insert_node(): Cannot insert a subproof into"
-                      " a hypothesis.")
-    if pos_in_hyp and len(target_index) >= 3:
-      if go_above:
-        # subproof's hypothesis part has only one line.
-        # insert a blank line in the conclusion part of one level below
-        pos_parent = target_index[:-2]
-        rank_insert = target_index[-2]
-        pos_in_hyp = False
-      else:
-        # inserting a node below a hypothesis is not allowed.
-        raise Exception("insert_node(): Cannot insert a node below"
-                        " within a hypothesis of a subproof.")
-    parent_node = self.get_p_node(pos_parent)
-    if not go_above:
-      if level_down: 
-        if len(parent_node.children) == rank_insert + 1:
-          # pos is the youngest kid
-          rank_insert = pos_parent[-1] + 1
-          pos_parent = pos_parent[:-1]
-          parent_node = self.get_p_node(pos_parent)
-      else:
-        rank_insert += 1
-
-    parent_node.children.insert(rank_insert, p_node)
-
-    self.build_index()
-    self.index_dict = self.build_index_dict()
-    n_lines = num_nodes(p_node) # count terminal nodes only
-    self.adjust_premises(target_index, target_ln, n_lines, opt='insert')
-    self.validate_all()
-
-  def delete_node(self, pos) -> None:
-    """ Delete the p_node in the proof tree at pos.
-      Nodes after pos are shifted to the left.
-      line_num, t_index as well as premises in annotations of the shifted
-      nodes are updated accordingly. 
-
-      In subproofs, there should always be exactly one hypothesis.
-      Therefore, if the position `pos` is within the hypothesis of a 
-      subproof, only the formula is cleared, without deleting the 
-      entire node.
-        Similarly, if the position `pos` is within the conclusion of a
-      subproof, and the conclusion part comprises only one line, then
-      the formula is cleared, without deleting the entire node.
-    """
-    p_node_del = self.get_p_node(pos)
-    del_index = p_node_del.index
-    del_ln = p_node_del.line_num
-    #^ In this way, we can make sure that t_index is tree_index.
-    #^ Also this checks whether pos is a valid position.
-    parent_index = del_index[:-1]
-    parent_node = self.get_p_node(parent_index)
-    if (parent_node.num_nodes_hyp() == 1 and p_node_del.label.is_hyp) or \
-       (parent_node.num_nodes_conc() == 1 and not p_node_del.label.is_hyp):
-      self.clear_node(pos)
-      return
-    rank_delete = del_index[-1] 
-    parent_node.children.pop(rank_delete)
-    self.build_index()
-    self.index_dict = self.build_index_dict()
-    self.adjust_premises(del_index, del_ln, 1, opt='delete')
-    self.validate_all()
-
   def clear_node(self, pos) -> None:
     """ Make the node at pos a blank formula. 
         The node may be either a formula or a subproof.
@@ -786,52 +840,51 @@ class ProofNodeS(ProofNode): # type: ignore
     self.index_dict = self.build_index_dict()
     self.validate_all()
 
-  def adjust_premises(self, target_index, target_ln, n_lines, opt) -> None:
-    ''' Adjust the premises of the annotations of the lines after t_index.
-      t_index may be a position of a line or a subproof.
-      In the latter case, and in this case only, we have n_lines >= 2.
-    '''
-    for v_ln in self.index_dict: # type: ignore
-      p_node = self.get_p_node(v_ln)
-      if p_node.label.type != LabelType.FORMULA or p_node.label.is_hyp:
-        continue
-      if v_ln >= target_ln and not li_extends(p_node.index, target_index): 
-          #^ do not use is_earlier() here
-          ann = p_node.label.ann
-          if opt == 'insert':
-            if v_ln != target_ln:
-              ann.adjust_premises(self, target_ln, v_ln, n_lines, opt)
-          elif opt == 'delete':
-            ann.adjust_premises(self, target_ln, v_ln, n_lines, opt)
-          else:
-            raise Exception("adjust_premises(): opt must be either"
-                            " 'insert' or 'delete'.")
+  # copy/cut/move/duplicate a node
 
-  # Using the editing methods above, we define the following.
+  def copy_node(self, pos) -> ProofNode: # type: ignore
+    import copy
+    p_node = self.get_p_node(pos)
+    return copy.deepcopy(p_node)
+  
+  def cut_node(self, pos) -> ProofNode: # type: ignore
+    return self.delete_node(pos, bReturn=True)
 
-  # 1. Add a blank line below the current line. If the current line is
-  #     at the end of a subproof, then this newly added blank line becomes
-  #     the last line of the current subproof.
-  #    If the current line is a hyp, then for the level 0 proof, the newly
-  #     added blank line is also a hyp. For subproofs this operation is
-  #     not allowed.
-  # 2. Insert a blank line above the current line at the same level.
-  #    Details of the operation depends on the nature of the current line.
-  # 3. Delete the current line.
-  #    If the current line is the only line in hypothesis or in the 
-  #     conclusion, then just clear the formula instead of deleting
-  #     the line.
-  # 4. Insert a blank line as the first conclusion, which means
-  #     the conclusion right below the 'proves' separator.
-  #    This operation is may be necessary when the there is a subproof
-  #     at the position of the first conclusion.
-  # 5. Add a blank subproof below the current line.
-  #    Blank subproof consists of a single blank hypothesis and a single
-  #     blank conclusion.
-  # 6. Insert a blank subproof above the current line.
-  # 7. End the current subproof, which means add a blank line below the
-  #     end of the current subproof. The blank line's level is the same 
-  #     as the current subproof's level.
-  # 8. Delete the current subproof.
+  def move_node(self, pos_src, pos_dest, go_above=True) -> None:
+    t_idx_src = (p_node_src := self.get_p_node(pos_src)).index
+    t_idx_dest = (p_node_dest := self.get_p_node(pos_dest)).index
+    assert not li_compatible(t_idx_src, t_idx_dest) , \
+      f"move_node(): pos_src '{pos_src}' and pos_dest '{pos_dest}'" \
+      "\n\tshould not be compatible."
+    l_num_src = p_node_src.line_num
+    assert isinstance(l_num_src, str)
+    if '-' in l_num_src:
+      l_num_src = l_num_src.split('-')[0]
+    l_num_dest = p_node_dest.line_num
+    assert isinstance(l_num_dest, str)
+    if '-' in l_num_dest:
+      l_num_dest = l_num_dest.split('-')[0]
 
+    if int(l_num_src) < int(l_num_dest):
+      # l_num_dest changes after the deletion of p_node_src
+      n_lines = num_nodes(p_node_src) # count terminal nodes only
+      l_num_dest = str(int(l_num_dest) - n_lines)
+
+    p_node = self.cut_node(pos_src)
+    self.insert_node(l_num_dest, p_node, go_above)
+    
+  def duplicate_node(self, pos_src, pos_dest, go_above=True) -> None:
+    t_idx_src = self.get_p_node(pos_src).index
+    t_idx_dest = self.get_p_node(pos_dest).index
+    assert not li_compatible(t_idx_src, t_idx_dest) , \
+      f"duplicate_node(): pos_src '{pos_src}' and pos_dest '{pos_dest}'" \
+      "\n\tshould not be compatible."
+    p_node = self.copy_node(pos_src)
+    self.insert_node(pos_dest, p_node, go_above)  
+
+  # chunks (sequence of consecutive siblings sharing a common parent)
+
+
+
+  
   #endregion Edit methods

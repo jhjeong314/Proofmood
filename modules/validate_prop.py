@@ -1,6 +1,6 @@
 # type: ignore
 #region 0 
-from typing import List, Tuple, Dict, Set, Any, NewType
+from typing import List, Tuple, Dict, Set, Any
 import re
 from enum import Enum
 
@@ -50,9 +50,6 @@ class LabelType(Enum):
   BLANK_HYP = 'blank.hypo'
   COMMENT_CONC = 'comment.conc'
   BLANK_CONC = 'blank.conc'
-
-tree_index = NewType("tree_index", List[int]) # tree index (e.g., [1, 0, 2])
-n_code = NewType("n_code", str) # node code (e.g., '1', '2-3')
 
 CONN_LIST = [conn.value for conn in Connective]
 INTRO_OR_ELIM = ['intro', 'elim']
@@ -286,6 +283,7 @@ class Ann:
     ann_s = self.input_str.strip()
     if not ann_s: # empty annotation
       self.input_str = ''
+      self.premise = []
       return
     err_msg = f'Annotation string "{ann_s}" is not valid.' # tentative
     match = re.search(r'\d', ann_s) # find the 1st digit
@@ -338,45 +336,48 @@ class Ann:
     else:
       raise ValueError('5: ' + err_msg)
 
-  def adjust_premises(self, proof, target_ln, v_ln, n_lines: int, 
-                      opt: str) -> None:
+  def adjust_premises(self, proof, target_ln: str, v_ln: str, 
+                      n_lines: int, opt: str) -> None:
     # target_ln is the line_num of the insertion node in the proof tree 
     # before insertion. This may change by the insertion because of the 
     # line-subproof issue. v_ln is the line_num of the node to be adjusted
     # in the new proof tree. 
-    assert opt == 'delete' or target_ln < v_ln, \
-      "Ann.adjust_premises(): reference idx must be earlier than k_idx" \
-      "\n\twhen opt == 'insert'"
+    def adjust_n(prem: str, s: int, e: int, n_lines, opt: str) -> str:
+      n = int(prem)
+      if n < s:
+        return str(n)
+      else:
+        if opt == 'insert':
+          return str(n + n_lines)
+        else: # opt == 'delete'
+          if n < e:
+            return '0' # non-existing line 
+          else: # n >= e
+            return str(n - n_lines)
+          
     p_node = proof.get_p_node(v_ln)
     ann = p_node.label.ann
     premise_new = []
+    s = int(target_ln) # start line number
+    e = s + n_lines # end line number + 1
     for prem in ann.premise:
       # prem is a node code, e.g., '1', '2-3'
-      if '-' in prem:
-        a, b = [s for s in prem.split('-')]
-      else:
-        a = prem
-        b = '0'
-      if opt == 'insert':
-        if a >= target_ln:
-          prem = str(int(a) + n_lines) 
-        if b >= target_ln:
-          b = str(int(b) + n_lines)
-          prem = f"{a}-{b}"
-      elif opt == 'delete':
-        if a > target_ln:
-          prem = str(int(a) - n_lines) 
-        if b > target_ln:
-          b = str(int(b) - n_lines)
-          prem = f"{a}-{b}"
-      else:
-        raise ValueError(f"Ann.adjust_premises(): wrong opt value '{opt}'")
+      if '-' in prem: # prem refers to a subproof
+        a, b = [v for v in prem.split('-')]
+        a = adjust_n(a, s, e, n_lines, opt)
+        b = adjust_n(b, s, e, n_lines, opt)
+        if a != '0' and b != '0':
+          prem = f"{a}-{b}" 
+        else:
+          continue # remove the premise
+      else: # prem refers to a formula line
+        prem = adjust_n(prem, s, e, n_lines, opt)
+        if prem == '0':
+          continue # remove the premise
+
       premise_new.append(prem)
+
     ann.premise = premise_new
-      
-    # opt ::= 'insert' | 'delete'
-
-
 
   # end of class Annotation
 
@@ -488,17 +489,17 @@ class ProofNode:
   def build_str(self) -> str:
     label = self.label
     n_kid = len(self.children)
-    ret_str_common = (f"type: {label.type.value}\n"
+    ret_str_common = (f"label.type: {label.type.value}\n"
+                      f"label.is_hyp: {self.label.is_hyp}\n"
                       f"line_num: {self.line_num}\n"
-                      f"index: {self.index}\n"
-                      f"is_hyp: {self.label.is_hyp}\n")
+                      f"index: {self.index}\n")
     
     if n_kid > 0: # subproof case
       ret_str = f"number of children: {n_kid}"
     elif label.type == LabelType.FORMULA:
-      ret_str = f"line: {label}\nvalidated: {self.validated}"
+      ret_str = f"label.line: {label}\nvalidated: {self.validated}"
     else: # comment or blank line
-      ret_str = (f"line: {label.line}\nvalidated: {self.validated}")
+      ret_str = (f"label.line: {label.line}\nvalidated: {self.validated}")
     return ret_str_common + ret_str
     
   def build_fitch_text(self) -> str:
@@ -596,7 +597,8 @@ class ProofNode:
         # When the line changes from hyp to non-hyp, insert '├─\n'.
         if b_hyp and not kid.label.is_hyp:
           b_hyp = False
-          ret_str += "& " +  "\\pmvert " * (level - 1) + "\\pmproves & & & \\\\\n"
+          ret_str += "& " +  "\\pmvert " * (level - 1) + \
+                     "\\pmproves & & & \\\\\n"
         # Output the line for leaf nodes only.
         label = kid.label
         if label.type != LabelType.SUBPROOF: # subproof is internal node
@@ -619,7 +621,8 @@ class ProofNode:
                 assert rule_name in Node.LATEX_DICT
                 rule_latex = Node.LATEX_DICT.get(rule_name)
                 intro_elim = rule_li[1]
-                rule_inf = "& \\infrule{" + rule_latex + "}{" + intro_elim + "}" # type: ignore
+                rule_inf = "& \\infrule{" + rule_latex + "}{" + intro_elim \
+                           + "}"
               if label.ann.premise:
                 prem = "& \\pmprem{" + ",".join(label.ann.premise) + "} "
               else:
@@ -639,8 +642,8 @@ class ProofNode:
             word_li = kid.label.line.replace("#", "\\#").split()
             line_str = "\\infrul{" + "\\; ".join(word_li) + "}"
             vert = "\\pmvert " * level
-            ret_str += "& \\multicolumn{4}{l}{" + vert + line_num + line_str + \
-                       "} " + "\\pmnl\n"
+            ret_str += "& \\multicolumn{4}{l}{" + vert + line_num + \
+                       line_str + "} " + "\\pmnl\n"
         else: # recursively call build_fitch_latex_rec() for subproofs
           ret_str += build_fitch_latex_rec(kid)
           ret_str += "& " +  "\\pmvert " * level + "& & & \\\\\n"
@@ -690,7 +693,7 @@ class ProofNode:
       ret_dict.update(kid.build_index_dict())
     return ret_dict
     
-  def get_p_node(self, node_code: List[int] | str): # ProofNode type
+  def get_p_node(self, node_code: List[int] | str | int): # ProofNode type
     """ Get and return the p_node specified by node_code, which 
         is either a tree index(: List[int]) or a line number(:str).
         Integer node_code is accepted as a line number.
@@ -700,14 +703,14 @@ class ProofNode:
     p_node = self
     if isinstance(node_code, int):
       node_code = str(node_code)
-    if isinstance(node_code, str):
+    if isinstance(node_code, str): # node_code: line_number = str
       index = self.index_dict.get(node_code)
       if index is not None:
         p_node = self.get_p_node(index) 
       else:
         raise ValueError(f"get_p_node(): line number '{node_code}'" 
                          " not found")
-    else:
+    else: # node_code: tree_index = List[int]
       if node_code == self.index:
         p_node = self
       else:
@@ -740,19 +743,19 @@ class ProofNode:
     """
     assert self.index_dict is not None, "get_p_node(): index_dict is None"
     
-    # make sure that both node_code1 and node_code2 are of the type List[int]
+    # make sure that both node_code1 and node_code2 are of t_idx type
     n_code1 = node_code1
     n_code2 = node_code2
-    node_code1 = node_code1 if not isinstance(node_code1, str) \
+    t_idx1 = node_code1 if isinstance(node_code1, list) \
                   else self.index_dict.get(node_code1)
-    if node_code1 is None:
+    if t_idx1 is None:
       if verbose:
         print("is_earlier(): node_code=", Fore.YELLOW, f"'{n_code1}'",
               Fore.RESET, " not found in index_dict\n", sep="")
       return False
-    node_code2 = node_code2 if not isinstance(node_code2, str) \
+    t_idx2 = node_code2 if isinstance(node_code2, list) \
                   else self.index_dict.get(node_code2)
-    if node_code2 is None:
+    if t_idx2 is None:
       if verbose:
         print("is_earlier(): node_code=", Fore.YELLOW, f"'{n_code2}'",
               Fore.RESET, " not found in index_dict\n", sep="")
@@ -760,10 +763,10 @@ class ProofNode:
     
     # This order is somewhat unusual but very important.
     # It is at the heart of the Fitch proof system.    
-    len1 = len(node_code1)
-    return len1 <= len(node_code2) and \
-           node_code1[:-1] == node_code2[:len1 - 1] and \
-           node_code1[-1] < node_code2[len1 - 1]
+    len1 = len(t_idx1)
+    return len1 <= len(t_idx2) and \
+           t_idx1[:-1] == t_idx2[:len1 - 1] and \
+           t_idx1[-1] < t_idx2[len1 - 1]
   
   def verified_by(self, conc: str | int, rule_inf: RuleInfer, 
                   premise: List[str] = [], verbose=False) -> bool:
@@ -1244,10 +1247,13 @@ def bSubproof(s: str) -> bool:
   return is_node_id(s) and '-' in s
 
 def li_extends(li1: List[int], li2: List[int]) -> bool:
-  """test if li1 extends li2"""
+  """ test if li1 properly extends li2 """
   if len(li1) <= len(li2):
     return False
   else:
     return li1[:len(li2)] == li2
+  
+def li_compatible(li1, li2) -> bool:
+  return li_extends(li1, li2) or li_extends(li2, li1) or li1 == li2
   
 #endregion util functions
