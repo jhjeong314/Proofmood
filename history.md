@@ -1,5 +1,6 @@
 # History
 
+* 2023.11.01 : Proof editing methods for insert, delete, cut, copy, paste etc.
 * 2023.10.18 : Automatic annotation of Fitch proof
 * 2023.10.07 : Alpha-beta pruning
 * 2023.09.28 : LaTeX and Text output of proof, with verbose option  

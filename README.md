@@ -61,3 +61,5 @@ Not used for the time being.  Nevertheless this is included here because I belie
 1. Automatic annotation examples (for propositional logic)
     - (`search_ann_ex0.ipynb`) [GitHub](./proofs_propositional/search_ann_ex0.ipynb) | [Google Colab](https://colab.research.google.com/drive/1ks7j3kGAgWr7lgdqfh15eycBf1AD1Jl0?usp=sharing)
     - (`search_ann_ex1.ipynb`) [GitHub](./proofs_propositional/search_ann_ex1.ipynb) | [Google Colab](https://colab.research.google.com/drive/1jlqCMTbiMxuaf3kZHb1HD4ZSBz9HH4TG?usp=sharing)
+
+1. Proof editing methods for insert, delete, update, clear, replace, copy, cut, paste, move, duplicate etc.  Premises in annotations are automatically updated to reflect the change of line numbers. (`edit_proof.ipynb`)  [GitHub](./proofs_propositional/edit_proof.ipynb) | [Google Colab](https://colab.research.google.com/drive/1BG7wgsdBnldZkARHAatZlsuy--EXJQUy?usp=sharing)
