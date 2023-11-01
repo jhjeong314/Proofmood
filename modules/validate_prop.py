@@ -341,7 +341,7 @@ class Ann:
     # target_ln is the line_num of the insertion node in the proof tree 
     # before insertion. This may change by the insertion because of the 
     # line-subproof issue. v_ln is the line_num of the node to be adjusted
-    # in the new proof tree. 
+    # in the new proof tree.  opt = 'insert' | 'delete'.
     def adjust_n(prem: str, s: int, e: int, n_lines, opt: str) -> str:
       n = int(prem)
       if n < s:
@@ -464,12 +464,13 @@ class NodeLabel:
   # end of class NodeLabel
 
 class ProofNode: 
-  # In order to get node: Node from p_node: ProofNode, first check
-  #   p_node.label.type == 'formula', and then let
-  #   node = p_node.label.formula.ast
-  # Of course this is possible iff p_node.label.type == 'formula'.
-  # Each and every line and subproof of a Fitch proof has a 
-  # corresponding ProofNode object.
+  """ In order to get node: Node from p_node: ProofNode, first check
+      p_node.label.type == 'formula', and then let
+      node = p_node.label.formula.ast
+    Of course this is possible iff p_node.label.type == 'formula'.
+    Each and every line and subproof of a Fitch proof has a 
+    corresponding ProofNode object. """
+  
   def __init__(self, label: NodeLabel, children=None):
     self.label = label
     self.children = children if children else [] 
@@ -512,24 +513,26 @@ class ProofNode:
       ││4. B   .imp elim 1,3
       ││5. C   .imp elim 2,4
       │6. A imp C  .imp intro 3-5    
-    """
-    assert self.label.type == LabelType.SUBPROOF, \
-      "build_fitch_text(): this method must be called for a subproof"
-    
-    ret_str = ''
-    b_hyp = True 
+    """    
     level = len(self.index) if self.index else 0 # always >= 1
-    for kid in self.children:
-      # When the line changes from hyp to non-hyp, insert '├─\n'.
-      if b_hyp and not kid.label.is_hyp:
-        b_hyp = False
-        ret_str += VERT * (level - 1) + '├─\n'
-      # Output the line for leaf nodes only.
-      if kid.label.type != LabelType.SUBPROOF: # output for leaf node 
-        line_str = f"{kid.label}"
-        ret_str += VERT * level + f'{kid.line_num}. ' + line_str + '\n'
-      else: # recursively call build_fitch_text() for subproofs
-        ret_str += kid.build_fitch_text()
+    if self.children: # subproof case
+      ret_str = ''
+      b_hyp = True 
+      for kid in self.children:
+        # When the line changes from hyp to non-hyp, insert '├─\n'.
+        if b_hyp and not kid.label.is_hyp:
+          b_hyp = False
+          ret_str += VERT * (level - 1) + '├─\n'
+        # Output the line for leaf nodes only.
+        if kid.label.type != LabelType.SUBPROOF: # output for leaf node 
+          line_str = f"{kid.label}"
+          ret_str += VERT * level + f'{kid.line_num}. ' + line_str + '\n'
+        else: # recursively call build_fitch_text() for subproofs
+          ret_str += kid.build_fitch_text()
+    else:
+      line_str = f"{self.label}"
+      ret_str = VERT * level + f'{self.line_num}. ' + line_str + '\n'
+      
     return ret_str
 
   def show_fitch_text(self, verbose: bool = True) -> None:
@@ -540,6 +543,34 @@ class ProofNode:
         We allow verbose to be an integer so that we can use 1  
         in place of True.
     """
+    def show_line(node, level):
+      print(VERT * level, sep="", end="")
+      print(f"{node.line_num}. ", sep="", end="")
+      # Now, we print the line with colored marks for formula lines.
+      # Comment/blank lines are relatively easy to handle.
+      label = node.label
+      if label.type == LabelType.FORMULA:
+        fmla_str = f"{label.formula}"
+        # 'top' is empty formula
+        fmla_str = '' if fmla_str == 'top' else fmla_str
+        if not label.is_hyp: # formula line in conclusion
+          if isinstance(label.ann, Ann):
+            print(fmla_str, end="")
+            if node.validated: # show green check-mark
+              if fmla_str != '': # non-empty formula case only
+                print("\t", Fore.LIGHTGREEN_EX, '\u2713', Fore.RESET, 
+                      sep="", end="")
+            else: # show red x-mark
+              print("\t", Fore.LIGHTRED_EX, 'x', Fore.RESET, sep="", end="")
+            print(f" {label.ann}")
+          else:
+            print(fmla_str, end="")
+            print("\t", Fore.LIGHTRED_EX, 'x', f" {label.ann}", Fore.RESET, sep="")
+        else: # hypothesis
+          print(f"{fmla_str}\t .hyp")
+      else: # comment or blank line
+        print(f"{label}")
+    
     text_str = self.build_fitch_text()
     #^ Each line in text_str has been treated so that 
     #  left border uses VERT and line numbers exist etc.
@@ -548,47 +579,27 @@ class ProofNode:
     else:
       # Show whether each line is validated or not by colored marks.
       # Of course this is for formula line only.
-      b_hyp = True
       level = len(self.index) if self.index else 0 # always >= 1
-      for kid in self.children:
-        # When the line changes from hyp to non-hyp, insert '├─\n'.
-        if b_hyp and not kid.label.is_hyp:
-          b_hyp = False
-          print(VERT * (level - 1) + '├─')
-        # Output the line for leaf nodes only.
-        if kid.label.type != LabelType.SUBPROOF:
-          print(VERT * level, sep="", end="")
-          print(f"{kid.line_num}. ", sep="", end="")
-          # Now, we print the line with colored marks for formula lines.
-          # Comment/blank lines are relatively easy to handle.
-          label = kid.label
-          if label.type == LabelType.FORMULA:
-            fmla_str = f"{label.formula}"
-            # 'top' is empty formula
-            fmla_str = '' if fmla_str == 'top' else fmla_str
-            if not label.is_hyp: # formula line in conclusion
-              if isinstance(label.ann, Ann):
-                print(fmla_str, end="")
-                if kid.validated: # show green check-mark
-                  if fmla_str != '': # non-empty formula case only
-                    print("\t", Fore.LIGHTGREEN_EX, '\u2713', Fore.RESET, 
-                          sep="", end="")
-                else: # show red x-mark
-                  print("\t", Fore.LIGHTRED_EX, 'x', Fore.RESET, sep="", end="")
-                print(f" {label.ann}")
-              else:
-                print(fmla_str, end="")
-                print("\t", Fore.LIGHTRED_EX, 'x', f" {label.ann}", Fore.RESET, sep="")
-            else: # hypothesis
-              print(f"{fmla_str}\t .hyp")
-          else: # comment or blank line
-            print(f"{label}")
-        else:
-          kid.show_fitch_text(verbose)       
+      if self.children:
+        b_hyp = True
+        for kid in self.children:
+          # When the line changes from hyp to non-hyp, insert '├─\n'.
+          if b_hyp and not kid.label.is_hyp:
+            b_hyp = False
+            print(VERT * (level - 1) + '├─')
+          # Output the line for leaf nodes only.
+          if kid.label.type != LabelType.SUBPROOF:
+            show_line(kid, level) # level is the parent's level
+          else:
+            kid.show_fitch_text(verbose)
+          # end of for loop
+      else:
+        show_line(self, level - 1)
 
   def build_fitch_latex(self, verbose: bool = True) -> str:
     """ Build a Fitch-style proof latex source. 
-        Need proofmood.sty for compilation. """
+        Need proofmood.sty for compilation.
+        `self` must be a subproof. """
     def build_fitch_latex_rec(node: ProofNode) -> str:
       ret_str = ''
       b_hyp = True
@@ -1255,5 +1266,12 @@ def li_extends(li1: List[int], li2: List[int]) -> bool:
   
 def li_compatible(li1, li2) -> bool:
   return li_extends(li1, li2) or li_extends(li2, li1) or li1 == li2
-  
+
+def idx_within(idx, idx1, idx2) -> bool:
+  """ Returns True iff all idx, idx1, idx2 share a common parent and
+      idx is between idx1 and idx2. """
+  if idx[:-1] != idx1[:-1] or idx1[:-1] != idx2[:-1]:
+    return False
+  return idx[-1] >= idx1[-1] and idx[-1] <= idx2[-1]
+
 #endregion util functions

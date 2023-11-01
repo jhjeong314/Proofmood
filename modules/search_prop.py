@@ -38,18 +38,18 @@ class ProofNodeS(ProofNode): # type: ignore
     assert isinstance(self.index_dict, dict), \
       "fmla_to_validate(): self.index_dict must be a dict."
     for key in reversed(self.index_dict):
-      tree_index = self.index_dict[key] 
+      tree_idx = self.index_dict[key] 
       #^ key is line_num. e.g., '6', '8-12'
-      p_node = self.get_p_node(tree_index) 
+      p_node = self.get_p_node(tree_idx) 
       if p_node.label.type == LabelType.FORMULA and \
             not p_node.label.is_hyp and not self.verified(key):
         #^ self.verified(key) is used instead of more speedy 
         # p_node.validated. This is sort of a double check.
         fmla_node = p_node.label.formula.ast
         if (conn := fmla_node.token.value) in CONN_LIST:
-          return ((key, tree_index), Connective(conn))
+          return ((key, tree_idx), Connective(conn))
         else:
-          return ((key, tree_index), "prime formula")
+          return ((key, tree_idx), "prime formula")
       else:
         continue
 
@@ -81,7 +81,7 @@ class ProofNodeS(ProofNode): # type: ignore
 
   def try_rule(self, rule: RuleInfer, ret_val, verbosity) -> bool: # type: ignore
     ''' ret_val is the return value of self.fmla_to_validate()
-        conc_index is the tree_index of the conclusion formula
+        conc_idx is the tree_idx of the conclusion formula
         p_conn is the principal connective of the conclusion formula
     '''
     match rule: # type: ignore
@@ -124,14 +124,14 @@ class ProofNodeS(ProofNode): # type: ignore
         Extract various information from ret_val and return them. 
         These information are used in searching annotations. 
     '''
-    ((conc_ln, conc_index), p_conn) = ret_val
-    conc_node_p = self.get_p_node(conc_index) # _p for ProofNode type
+    ((conc_ln, conc_idx), p_conn) = ret_val
+    conc_node_p = self.get_p_node(conc_idx) # _p for ProofNode type
     conc_node = conc_node_p.label.formula.ast # Node type
     conc_fmla = FormulaProp(conc_node) # FormulaProp type
-    return (conc_ln, conc_index, p_conn, 
+    return (conc_ln, conc_idx, p_conn, 
             conc_node_p, conc_node, conc_fmla)
 
-  def annotate_EX(self, conc_index, conc_ln, conc_node_p, 
+  def annotate_EX(self, conc_idx, conc_ln, conc_node_p, 
                   ann_str, rule, verbosity) -> bool:
     ''' EX stands for EXtended. 
       When an annotation is found for the conclusion formula, 
@@ -141,7 +141,7 @@ class ProofNodeS(ProofNode): # type: ignore
       Returns True/False iff the annotation is found/not found.
     '''
     if ann_str:
-      self.annotate(conc_index, Ann(ann_str))
+      self.annotate(conc_idx, Ann(ann_str))
       conc_node_p.validated = True
       if verbosity > 0:
         print(f"'{rule}' rule successfully applied to line {conc_ln}.")
@@ -167,7 +167,7 @@ class ProofNodeS(ProofNode): # type: ignore
     return ans
 
   def try_LEM(self, ret_val, verbosity: int) -> bool:
-    (conc_ln, conc_index, _, conc_node_p, _, conc_fmla) = \
+    (conc_ln, conc_idx, _, conc_node_p, _, conc_fmla) = \
       self.prepare_search_ann(ret_val)
 
     ann_str = '' # tentative value
@@ -179,7 +179,7 @@ class ProofNodeS(ProofNode): # type: ignore
     if conc_fmla.verified_by(RuleInfer.LEM):
       ann_str = f"{rule}"
 
-    return self.annotate_EX(conc_index, conc_ln, conc_node_p, 
+    return self.annotate_EX(conc_idx, conc_ln, conc_node_p, 
                             ann_str, rule, verbosity)
 
   def try_repeat(self, ret_val, verbosity) -> bool:
@@ -603,172 +603,235 @@ class ProofNodeS(ProofNode): # type: ignore
   #endregion Annotation search methods
 
   #region Edit methods
+
   def insert_node(self, pos: int | str | List[int], 
           p_node: ProofNode | None=None, # type: ignore
           go_above: bool=True, level_down: bool=False) -> None:
+    """ This method utilizes insert_nodes() method. """
+    if isinstance(p_node, ProofNode): # type: ignore
+      p_node_li = [p_node]
+    else:
+      p_node_li = [] # later, this will be a list of a single blank line
+    self.insert_nodes(pos, p_node_li, go_above, level_down)
+
+  def insert_nodes(self, pos: int | str | List[int], 
+          p_node_li: List[ProofNode]=[], # type: ignore
+          go_above: bool=True, level_down: bool=False) -> None:
     """ 
-      pos may be a position of a line or a subproof.
-      p_node itself may be a line or a subproof too.
-      If p_node is None, then a blank line is inserted.
-      If go_above is True, then insert p_node so that its position 
-        becomes pos. Nodes at and after pos are shifted to the right.
-      If go_above is False, then add p_node so that its position
-        becomes the younger sibling adjacent to pos. Nodes after pos
-        are shifted to the right.
-      level_down is used only when go_above is False and pos is the 
-        youngest kid (and thus a conclusion) and pos is not in the 
+      This method is an extension of the insert_node() method.
+      We can insert a list of nodes `p_node_li` at once with this method.
+      If this argument is not supplied, then a blank line is inserted.
+
+      `pos` may be a position of a line or a subproof.
+      `p_node_li` is a chunk of nodes(line or subproof), which means
+        a list of consecutive nodes sharing a common parent node.
+    
+      level_down is used only when go_above is False and pos refers to
+        the youngest kid (and thus a conclusion) and pos is not in the 
         base level. If any of these three conditions is not met, then 
-        the value of level_down is ignored. If all these conditions 
-        are met and if level_down is True, then the new node is added 
-        one level below.
-      Normally, if pos is in hypothesis/conclusion, then the new node 
-        goes into hypothesis/conclusion respectively. But subproofs
-        can have only one hypothesis. So if go_above is True, and pos is 
-        in the hypothesis of a subproof, then we let the new node go into
-        the conclusion part of the parent subproof which is one level below.
-        But even in this case, if the new node is a comment, then it goes
-        into the hypothesis part of the current subproof.
-        If pos is in hypothesis of a subproof and go_above is False, then
-        and only then this method raises an exception.
-      If pos is the position of the last conclusion of a subproof, then 
-      sometimes we want to add a line one level below. In this case,
-        set level_down to True.
-      Updating line_num and t_index is easy. Just do the following:
-        self.build_index()
-        self.index_dict = self.build_index_dict()
-      But updating the premises of the shifted lines needs some work.
-    """
-    p_node_target = self.get_p_node(pos)
-    target_index = p_node_target.index
-    target_ln = p_node_target.line_num
-    assert len(target_index) > 1, \
-      f"insert_node(): You cannot insert a node at the root."
-    pos_in_hyp = p_node_target.label.is_hyp
+        the value of level_down is ignored.
 
-    # determine the position of the parent node and the rank of
+      Inserting into the hypothesis section requires careful consideration. 
+        It cannot accommodate a subproof and should not accept more than 
+        one formula.
+        
+      As the result of the insertion, the lines below the insertion node
+        are shifted, and we have to update line_num and index, which is
+        easily done by the following:
+          self.build_index()
+          self.index_dict = self.build_index_dict()
+      But updating the premises of the shifted lines needs some work,
+        and we do it by calling self.adjust_premises() method. """
+    # work on the destination node and its parent
+    p_node_dest = self.get_p_node(pos)
+    dest_idx = p_node_dest.index
+    dest_ln = p_node_dest.line_num
+    assert len(dest_idx) > 1, \
+      f"insert_nodes(): You cannot insert a node at the root."
+    dest_in_hyp = p_node_dest.label.is_hyp
+    # p_node_li = [] case is handled below.
+    # We let p_node_li = [p_node] where p_node is a blank line.
+    if not p_node_li:
+      label0 = NodeLabel(type=LabelType.BLANK_HYP) if dest_in_hyp \
+              else NodeLabel(type=LabelType.BLANK_CONC)
+      p_node_li = [ProofNode(label=label0)]
+
+    assert all([isinstance(p_n, ProofNode) for p_n in p_node_li]), \
+      f"insert_nodes(): isinstance(p_node, ProofNode) required."
+    
+    # determine the parent node and the rank of
     # the node to be inserted. (first kid's rank is 0)
-    pos_parent = target_index[:-1]
-    rank_insert = target_index[-1]
+    dest_idx_parent = dest_idx[:-1]
+    rank_insert = dest_idx[-1]
 
-    if pos_in_hyp and p_node is not None \
-        and p_node.label.type == LabelType.SUBPROOF:
-      raise Exception("insert_node(): Cannot insert a subproof into"
+    # If the destination is in hypothesis, then 
+    # 1. no subproof can be inserted.
+    # 2. for proper subproofs, 
+    #    2.1 at most one formula can exist.
+    #    2.2 when a formula or a blank line is inserted, it is inserted
+    #        as a conclusion of the parent proof one level below.
+    if dest_in_hyp:
+      if p_node_li:
+        if any([p_node.label.type == LabelType.SUBPROOF 
+                for p_node in p_node_li]):
+          raise Exception("insert_node(): Cannot insert a subproof into"
                       " a hypothesis.")
-    if pos_in_hyp and len(target_index) >= 3:
-      if go_above:
-        if p_node is None or \
-           p_node.label.type != LabelType.COMMENT_HYP:
-          # subproof's hypothesis part has only one line.
-          # insert the line in the conclusion part of one level below
-          pos_parent = target_index[:-2]
-          rank_insert = target_index[-2]
-          pos_in_hyp = False
-      else:
-        # inserting a node below a hypothesis is not allowed.
-        raise Exception("insert_node(): Cannot insert a node below"
-                        " within a hypothesis of a subproof.")
+      if len(dest_idx) >= 3: # proper subproof case
+        if go_above:
+          if len(p_node_li) > 1:
+            raise Exception("insert_nodes(): Cannot insert more than"
+                            " one node into a hypothesis of a subproof.")
+          p_node = p_node_li[0]
+          if p_node.label.type in {LabelType.FORMULA, LabelType.BLANK_HYP}:
+            # insert p_node in the conclusion part of the parent subproof
+            dest_idx_parent = dest_idx[:-2]
+            rank_insert = dest_idx[-2]
+            dest_in_hyp = False
+            if p_node.label.type == LabelType.BLANK_HYP:
+              p_node.label.type = LabelType.BLANK_CONC
+              p_node.label.is_hyp = False
+              p_node_li = [p_node]
+        else:
+          # inserting any node below a hypothesis is not allowed.
+          raise Exception("insert_nodes(): Cannot insert any node below"
+                          " within a hypothesis of a subproof.")
 
-    if p_node is not None: # type: ignore
-      assert isinstance(p_node, ProofNode), \
-        f"insert_node(): p_node must be a ProofNode."
-    else: # insert a blank line
-      label0 = NodeLabel(type=LabelType.BLANK_HYP) if pos_in_hyp \
-               else NodeLabel(type=LabelType.BLANK_CONC)
-      p_node = ProofNode(label=label0)
-
-    parent_node = self.get_p_node(pos_parent)
-    if not go_above:
-      if level_down: 
-        if len(parent_node.children) == rank_insert + 1:
-          # pos is the youngest kid
-          rank_insert = pos_parent[-1] + 1
-          pos_parent = pos_parent[:-1] # = target_insert[:-2]
-          parent_node = self.get_p_node(pos_parent)
-      else:
+    parent_node = self.get_p_node(dest_idx_parent)
+    # go_above = False case
+    if not go_above: # dest_in_hyp is False here
+      if level_down and len(dest_idx) >= 3 and \
+         len(parent_node.children) == rank_insert + 1:
+        #^ If dest_idx is the youngest child, finish the current subproof 
+        #^ and insert p_node one level down.
+        rank_insert = dest_idx_parent[-1] + 1
+        dest_idx_parent = dest_idx_parent[:-1] # = dest_idx[:-2]
+        parent_node = self.get_p_node(dest_idx_parent)
+      else: # insert below the destination node
         rank_insert += 1
 
     # the insertion is done here
-    parent_node.children.insert(rank_insert, p_node)
+    parent_node.children[rank_insert:rank_insert] = p_node_li
 
     self.build_index()
     self.index_dict = self.build_index_dict()
-    n_lines = num_nodes(p_node) # count terminal nodes only
-    self.adjust_premises(target_index, target_ln, n_lines, 
+    n_lines = sum([num_nodes(p_n) for p_n in p_node_li]) 
+    self.adjust_premises(dest_idx, dest_ln, n_lines, 
                          opt='insert', go_above=go_above)
     #^ Actually, it would have been a little bit easier if we adjusted 
     #^ premises before the insertion action.
 
     self.validate_all()
 
-  def delete_node(self, pos: int | str | List[int], bReturn=False) -> None:
-    """ Delete the p_node in the proof tree at pos.
-      Nodes after pos are shifted to the left.
-      line_num, t_index as well as premises in annotations of the shifted
-      nodes are updated accordingly. 
+  def delete_node(self, pos: int | str | List[int], bReturn=False):
+    ''' This method utilizes the delete_nodes() method. '''
+    if isinstance(pos, list):
+      p_node = self.get_p_node(pos)
+      pos = p_node.line_num
 
-      In subproofs, there should always be exactly one hypothesis.
-      Therefore, if the position `pos` is within the hypothesis of a 
-      subproof, only the formula is cleared, without deleting the 
-      entire node.
-        Similarly, if the position `pos` is within the conclusion of a
-      subproof, and the conclusion part comprises only one line, then
-      the formula is cleared, without deleting the entire node.
-    """
-    p_node_del = self.get_p_node(pos)
-    del_index = p_node_del.index
-    del_ln = p_node_del.line_num
-    #^ In this way, we can make sure that t_index is tree_index.
-    #^ Also this checks whether pos is a valid position.
-    parent_index = del_index[:-1]
-    parent_node = self.get_p_node(parent_index)
-    if (parent_node.num_nodes_hyp() == 1 and p_node_del.label.is_hyp) or \
-       (parent_node.num_nodes_conc() == 1 and not p_node_del.label.is_hyp):
-      self.clear_node(pos)
-      return
-    rank_delete = del_index[-1] 
-    parent_node.children.pop(rank_delete)
+    self.delete_nodes(pos, bReturn)
+  
+  def delete_nodes(self, chunk, bReturn=False):
+    """ Delete the nodes in the chunk. 
+      `chunk` is a string that looks like 'a~b', where 
+      a, b are of the form 'n' or 's-e' 
+        Chunk represents a sequence of consecutive siblings sharing 
+      a common parent. 
+        If a subproof has line_num a-b, then chunk:='a-b' deletes the
+      entire subproof, and chunk:='a~b' clears all hyp and conc of the
+      subproof and leaves a blank subproof.
+        All subproofs must have at least one hypothesis and at least
+      one conclusion. Therefore, when delete all the lines of the 
+      hypothesis or the conclusion section of a subproof, we leave a 
+      blank line there.
+        As the result of the insertion, the lines below the insertion 
+      node are shifted, and we have to update line_num and index, which 
+      is easily done by the following:
+          self.build_index()
+          self.index_dict = self.build_index_dict()
+      But updating the premises of the shifted lines needs some work,
+        and we do it by calling self.adjust_premises() method. """
+    # Work on the nodes to be deleted.
+    p_node_del_li = self.get_p_node_li(chunk)
+    del_idx_li = [p_node.index for p_node in p_node_del_li]
+    del_ln_li = [p_node.line_num for p_node in p_node_del_li]
+    parent_idx = del_idx_li[0][:-1]
+    parent_node = self.get_p_node(parent_idx)
+    # If there is only one hypothesis or one conclusion, then we cannot
+    # delete it. Instead, we clear it.  To handle this, we prepare some 
+    # variables here.
+    n_hyp = parent_node.num_nodes_hyp()
+    n_conc = parent_node.num_nodes_conc()
+    n_hyp_del = sum([p_node.label.is_hyp for p_node in p_node_del_li])
+    n_conc_del = len(p_node_del_li) - n_hyp_del
+
+    rank_s = del_idx_li[0][-1]
+    rank_e = del_idx_li[-1][-1] # = rank_s + len(p_node_del_li) - 1
+
+    n_lines_sub = 0
+    # delete hypotheses
+    if n_hyp_del == n_hyp: # we must leave a blank hyp in this case
+      self.clear_node(parent_idx + [0])
+      del parent_node.children[1:n_hyp]
+      n_hyp_del = n_hyp - 1
+      n_lines_sub -= 1
+    elif n_hyp_del > 0: # easier case
+      del parent_node.children[rank_s:rank_s+n_hyp_del]
+    # delete conclusions
+    if n_conc_del == n_conc: # we must leave a blank conc in this case
+      self.clear_node(parent_idx + [max(s_conc := n_hyp - n_hyp_del, 1)])
+      del parent_node.children[s_conc+1:]
+      n_lines_sub -= 1
+    elif n_conc_del > 0: 
+      # need some work here because hypotheses may have been deleted
+      s_conc = rank_e - n_hyp_del - n_conc_del + 1
+      e_conc = rank_e - n_hyp_del + 1
+      del parent_node.children[s_conc:e_conc]
+
     self.build_index()
     self.index_dict = self.build_index_dict()
-    n_lines = num_nodes(p_node_del) # count terminal nodes only
-    self.adjust_premises(del_index, del_ln, n_lines, opt='delete')
+    n_lines = sum([num_nodes(p_n) for p_n in p_node_del_li]) + n_lines_sub
+    n_del_nodes = len(p_node_del_li)
+
+    self.adjust_premises(del_idx_li[0], del_ln_li[0], n_lines, 
+                        opt='delete', n_del_nodes=n_del_nodes)
     self.validate_all()
 
     if bReturn:
-      return p_node_del
+      return p_node_del_li
 
-  def adjust_premises(self, target_index, target_ln: str, n_lines, 
-                      opt, go_above=True) -> None:
+  def adjust_premises(self, dest_idx, dest_ln: str, n_lines, 
+                      opt, go_above=True, n_del_nodes=1) -> None:
     ''' When a node is inserted or deleted, we need to adjust the premises 
-      in the annotations of the lines after target_ln.
+      in the annotations of the lines after dest_ln.
         opt is either 'insert' or 'delete'.
-        target_ln is a string which represents a position of a line or 
+        dest_ln is a string which represents a position of a line or 
       a subproof. In the latter case, and in this case only, the value of
       the argument n_lines is >= 2. 
         This method is not recursively called. It calls the Ann class's
       adjust_premises() method.
     '''
     
-    if '-' in target_ln: 
-      target_ln = target_ln.split('-')[0] # hyp line of the subproof
+    if '-' in dest_ln: 
+      dest_ln = dest_ln.split('-')[0] # hyp line of the subproof
     for v_ln in self.index_dict: # type: ignore
       # self.index_dict is of the tree after the insertion/deletion
       p_node = self.get_p_node(v_ln)
       if p_node.label.type != LabelType.FORMULA or p_node.label.is_hyp:
         continue
-      if not int(v_ln) >= int(target_ln):
+      if not int(v_ln) >= int(dest_ln):
         #^ do not use is_earlier() here
         continue
       ann = p_node.label.ann
       if not isinstance(ann, Ann) or not ann.premise:
         continue
       if opt == 'delete': # easier case
-        ann.adjust_premises(self, target_ln, v_ln, n_lines, opt)
+        ann.adjust_premises(self, dest_ln, v_ln, n_lines, opt)
       elif opt == 'insert':
-        if int(v_ln) >= (e := int(target_ln) + n_lines):
-           target_index1 = target_index[:-1] + [target_index[-1] + 1]
+        if int(v_ln) >= (e := int(dest_ln) + n_lines):
+           dest_idx1 = dest_idx[:-1] + [dest_idx[-1] + 1]
            if go_above or (int(v_ln) > e and 
-                           not li_extends(p_node.index, target_index1)):
-             ann.adjust_premises(self, target_ln, v_ln, n_lines, opt)
+                           not li_extends(p_node.index, dest_idx1)):
+             ann.adjust_premises(self, dest_ln, v_ln, n_lines, opt)
       else:
         raise Exception("adjust_premises(): opt must be either"
                         " 'insert' or 'delete'.")
@@ -789,7 +852,7 @@ class ProofNodeS(ProofNode): # type: ignore
   def annotate(self, pos, ann: Ann) -> None: # type: ignore
     import copy
     """ Annotate the formula at pos with ann.
-        pos must be the t_index of a conclusion formula node. """
+        pos must be the t_idx of a conclusion formula node. """
     p_node = self.get_p_node(pos)
     l_num = p_node.line_num
     assert p_node.label.type == LabelType.FORMULA, \
@@ -810,7 +873,7 @@ class ProofNodeS(ProofNode): # type: ignore
         The node may be either a formula or a subproof.
         Blank formula means 
           hyp case: top .hyp
-          conc case: top <empty annotation>"""
+          conc case: top <empty annotation> """
     p_node = self.get_p_node(pos)
     p_node.label.type = LabelType('formula')
     p_node.label.formula = Formula()
@@ -826,65 +889,115 @@ class ProofNodeS(ProofNode): # type: ignore
   def replace_node(self, pos, p_node) -> None:
     assert isinstance(p_node, ProofNode), \
       f"insert_node(): p_node must be a ProofNode."
-    p_node_target = self.get_p_node(pos)
-    if p_node_target.label.is_hyp and \
+    p_node_dest = self.get_p_node(pos)
+    if p_node_dest.label.is_hyp and \
        p_node.label.type == LabelType.SUBPROOF:
       raise Exception("replace_node(): Cannot replace a hypothesis" 
                       " with a subproof.")
-    t_index = p_node_target.index
-    parent_index = t_index[:-1]
-    parent_node = self.get_p_node(parent_index)
-    rank_target = t_index[-1]
-    parent_node.children[rank_target] = p_node
+    t_idx = p_node_dest.index
+    parent_idx = t_idx[:-1]
+    parent_node = self.get_p_node(parent_idx)
+    rank_dest = t_idx[-1]
+    parent_node.children[rank_dest] = p_node
     self.build_index()
     self.index_dict = self.build_index_dict()
     self.validate_all()
 
-  # copy/cut/move/duplicate a node
+  # copy/cut/move/duplicate nodes
 
   def copy_node(self, pos) -> ProofNode: # type: ignore
-    import copy
-    p_node = self.get_p_node(pos)
-    return copy.deepcopy(p_node)
+    ''' This method utilizes the copy_nodes() method. '''
+    return self.copy_nodes(pos)[0]
   
-  def cut_node(self, pos) -> ProofNode: # type: ignore
-    return self.delete_node(pos, bReturn=True)
+  def copy_nodes(self, chunk) -> List[ProofNode]: # type: ignore
+    import copy
 
+    return copy.deepcopy(self.get_p_node_li(chunk))
+    
+  def cut_node(self, pos) -> ProofNode: # type: ignore
+    """ Cut the node in the chunk and return it. """
+    return self.cut_nodes(pos)[0]
+  
+  def cut_nodes(self, chunk) -> List[ProofNode]: # type: ignore
+    """ Cut the nodes in the chunk and return them as a list. """
+    return self.delete_nodes(chunk, bReturn=True) # type: ignore   
+  
   def move_node(self, pos_src, pos_dest, go_above=True) -> None:
-    t_idx_src = (p_node_src := self.get_p_node(pos_src)).index
+    ''' This method utilizes the move_nodes() method. '''
+    self.move_nodes(pos_src, pos_dest, go_above)
+
+  def move_nodes(self, chunk, pos_dest, go_above=True) -> None:
+    ''' This method is basically does the job of cut_nodes() followed by
+      insert_nodes(). Some preparatory work is necessary. '''
+    # source nodes
+    p_node_li = self.get_p_node_li(chunk) 
+    #^ Checking the integrity of `chunk` is done above.
+
+    # destination node
     t_idx_dest = (p_node_dest := self.get_p_node(pos_dest)).index
-    assert not li_compatible(t_idx_src, t_idx_dest) , \
-      f"move_node(): pos_src '{pos_src}' and pos_dest '{pos_dest}'" \
-      "\n\tshould not be compatible."
-    l_num_src = p_node_src.line_num
-    assert isinstance(l_num_src, str)
+    l_num_dest = p_node_dest.line_num
+
+    # compatibility of src and dest positions
+    for p_node in p_node_li:
+      assert isinstance(p_node, ProofNode)
+      t_idx_src = p_node.index
+      assert not li_compatible(t_idx_src, t_idx_dest), \
+        f"move_nodes(): source index '{t_idx_src}' and destination index" \
+        f" '{t_idx_dest}'\n\tshould not be compatible."
+      
+    l_num_src = p_node_li[0].line_num # type: ignore
     if '-' in l_num_src:
       l_num_src = l_num_src.split('-')[0]
-    l_num_dest = p_node_dest.line_num
-    assert isinstance(l_num_dest, str)
     if '-' in l_num_dest:
       l_num_dest = l_num_dest.split('-')[0]
 
     if int(l_num_src) < int(l_num_dest):
-      # l_num_dest changes after the deletion of p_node_src
-      n_lines = num_nodes(p_node_src) # count terminal nodes only
+      # destination changes after the deletion of p_node_src
+      n_lines = sum([num_nodes(p_n) for p_n in p_node_li]) 
       l_num_dest = str(int(l_num_dest) - n_lines)
 
-    p_node = self.cut_node(pos_src)
-    self.insert_node(l_num_dest, p_node, go_above)
+    self.delete_nodes(chunk)
+    # We use l_num_dest instead of pos_dest because pos_dest may 
+    # have been changed by the deletion of `chunk`.
+    self.insert_nodes(l_num_dest, p_node_li, go_above)
     
   def duplicate_node(self, pos_src, pos_dest, go_above=True) -> None:
-    t_idx_src = self.get_p_node(pos_src).index
-    t_idx_dest = self.get_p_node(pos_dest).index
-    assert not li_compatible(t_idx_src, t_idx_dest) , \
-      f"duplicate_node(): pos_src '{pos_src}' and pos_dest '{pos_dest}'" \
-      "\n\tshould not be compatible."
-    p_node = self.copy_node(pos_src)
-    self.insert_node(pos_dest, p_node, go_above)  
+    ''' This method utilizes the duplicate_nodes() method. '''
+    self.duplicate_nodes(pos_src, pos_dest, go_above)
 
-  # chunks (sequence of consecutive siblings sharing a common parent)
+  def duplicate_nodes(self, chunk, pos_dest, go_above=True) -> None:
+    """ This method is basically does the job of copy_nodes() followed 
+      by insert_nodes(). Much simpler than move_nodes(). """
+    p_node_li = self.copy_nodes(chunk)
+    #^ Checking the integrity of `chunk` is done above.
+    self.insert_nodes(pos_dest, p_node_li, go_above)   
 
+  def get_p_node_li(self, chunk) -> List[ProofNode]: # type: ignore
+    ''' Get p_node_li from `chunk`.
+        Duplication is the responsibility of the caller. '''    
 
-
-  
+    assert isinstance(self.index_dict, dict), \
+      f"get_p_node_li(): self.index_dict is not dict?"
+    assert isinstance(chunk, str) or isinstance(chunk, int), \
+      f"get_p_node_li(): chunk='{chunk}'?"
+    # Various formats of chunk are allowed.
+    chunk = str(chunk) # we allow something like chunk = 7
+    s_li = chunk.split('~')
+    if len(s_li) == 2:
+      pos_s = s_li[0]
+      idx_s = self.index_dict.get(pos_s)
+      pos_e = s_li[1]
+      idx_e = self.index_dict.get(pos_e)
+      assert self.index_dict[pos_s][:-1] == self.index_dict[pos_e][:-1], \
+        f"get_p_node_li(): two positions '{pos_s}' and '{pos_e}'" \
+        "\n\tshould share a common parent."
+      p_node_li = [self.get_p_node(pos) for pos in self.index_dict 
+                    if idx_within(self.index_dict[pos], idx_s, idx_e)]
+    elif len(s_li) == 1:
+      p_node_li = [self.get_p_node(chunk)]
+    else:
+      raise Exception("get_p_node_li(): wrong chunk format.")
+    
+    return p_node_li
+      
   #endregion Edit methods
